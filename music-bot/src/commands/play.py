@@ -3,10 +3,10 @@ import discord
 from discord.ext import commands
 from main import bot
 
-# Get the bot instance (if not using a Cog class)
-bot = commands.command()
+async def setup(bot):  # Add this setup function
+    bot.tree.command(name="play", description="Play a song from Spotify")(play_song)
 
-@bot.tree.command(name="play", description="Play a song from Spotify")
+@commands.command()
 async def play_song(interaction: discord.Interaction, query: str):
     """Plays a song from Spotify based on the provided query."""
     try:

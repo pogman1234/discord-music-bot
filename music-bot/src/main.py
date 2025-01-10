@@ -1,6 +1,7 @@
 import asyncio
 import discord
 import os
+import importlib
 from dotenv import load_dotenv
 from bot import MusicBot
 
@@ -26,7 +27,7 @@ async def load_commands():
     for filename in os.listdir("./commands"):
         if filename.endswith(".py"):
             try:
-                await bot.load_extension(f"commands.{filename[:-3]}")
+                await importlib.import_module(f"commands.{filename[:-3]}").setup(bot)
                 print(f"    Loaded extension: commands.{filename[:-3]}")
             except Exception as e:
                 print(f"    Failed to load extension: commands.{filename[:-3]}")
