@@ -88,6 +88,9 @@ class MusicBot:
             await self.play_song(ctx, next_song_info)
         except asyncio.QueueEmpty:
             logger.info(f"Queue is empty in {ctx.guild.name}.")
+            # Add logging for when a song is skipped
+            if ctx.voice_client.is_playing():
+                logger.info(f"Song skipped in {ctx.guild.name}.")
             self.currently_playing = None
         finally:
             self.song_queue.task_done()
@@ -121,10 +124,6 @@ class MusicBot:
                         await self.play_song(ctx, song_info)
                     else:
                         await self.song_queue.put(song_info)
-                        # Send a message to the text channel
-                        embed = discord.Embed(title="Added to Queue", description=f"[{song_info['title']}]({song_info['url']})", color=discord.Color.green())
-                        embed.set_thumbnail(url=song_info.get('thumbnail'))
-                        await ctx.channel.send(embed=embed)
 
                     return song_info
                 else:
@@ -163,6 +162,7 @@ class MusicBot:
                             self.bot.loop.call_soon_threadsafe(asyncio.run_coroutine_threadsafe, self.play_song(ctx, song_info), self.bot.loop)
                         else:
                             self.bot.loop.call_soon_threadsafe(self.song_queue.put_nowait, song_info)
+                    logger.info(f"Finished downloading '{song_info['title']}'")
 
             except Exception as e:
                 logger.error(f"Error downloading {song_info['url']}: {e}")
@@ -172,6 +172,7 @@ class MusicBot:
 
     async def start_disconnect_timer(self, ctx):
         """Starts the disconnect timer."""
+        logger.info(f"Starting disconnect timer for {ctx.guild.name}")
         if self.disconnect_timer:
             self.disconnect_timer.cancel()  # Cancel any existing timer
 
@@ -182,7 +183,7 @@ class MusicBot:
         await asyncio.sleep(10)  # Wait for 10 seconds
 
         voice_client = ctx.guild.voice_client
-        if voice_client and not voice_client.is_playing() and self.song_queue.empty():
+        if voice_client:
             # Check if bot is alone in the voice channel
             if self.is_voice_empty(ctx):
                 logger.info(f"Bot is alone in the voice channel in {ctx.guild.name}. Disconnecting.")
@@ -190,8 +191,7 @@ class MusicBot:
                 self.currently_playing = None
                 logger.info(f"Exiting the bot with code 0.")
                 sys.exit(0)  # Exit with code 0
-                
-                
+
     def is_voice_empty(self, ctx):
         """Checks if the voice channel is empty (except for the bot)."""
         voice_client = ctx.guild.voice_client
