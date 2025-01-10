@@ -7,6 +7,9 @@ WORKDIR /app
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
 
+# Create music directory
+RUN mkdir -p /app/music
+
 # Copy the current directory contents into the container at /app
 COPY . /app
 

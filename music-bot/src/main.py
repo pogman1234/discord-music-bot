@@ -6,13 +6,14 @@ from dotenv import load_dotenv
 import logging
 import asyncio
 from bot import MusicBot
+from threading import Thread
 
 # Load environment variables
 load_dotenv()
 
 # --- Logging Setup ---
 logger = logging.getLogger('discord')
-logger.setLevel(logging.DEBUG)  # Set the minimum level to log (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+logger.setLevel(logging.INFO)  # Changed to INFO
 
 # Create a file handler to write logs to a file
 file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
@@ -57,9 +58,7 @@ async def ping(interaction: discord.Interaction):
 
 # --- Load Cogs ---
 async def load_cogs():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    commands_dir = os.path.join(base_dir, "commands")
-    for filename in os.listdir(commands_dir):
+    for filename in os.listdir("./music-bot/src/commands"):
         if filename.endswith(".py"):
             extension = filename[:-3]
             try:
@@ -68,10 +67,13 @@ async def load_cogs():
             except Exception as e:
                 logger.error(f"Failed to load cog {extension}: {e}")
 
-# --- Main Function ---
-async def main():
+async def start_bot():
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
+
+# --- Start Bot ---
+async def main():
+    await start_bot()
 
 if __name__ == "__main__":
     asyncio.run(main())
