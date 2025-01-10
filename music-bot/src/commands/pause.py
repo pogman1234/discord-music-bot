@@ -5,7 +5,6 @@ from main import bot
 async def setup(bot):  # Add this setup function
     bot.tree.command(name="pause", description="Pauses the currently playing song.")(pause)
 
-@commands.command()
 async def pause(interaction: discord.Interaction):
     """Pauses the currently playing song."""
     try:

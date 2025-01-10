@@ -30,8 +30,8 @@ class MusicBot(commands.Bot):
         self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
             client_id=SPOTIPY_CLIENT_ID,
             client_secret=SPOTIPY_CLIENT_SECRET,
-            redirect_uri="http://localhost:8080/callback",  # Replace with your actual redirect URI
-            scope="user-read-playback-position user-modify-playback-state"
+            redirect_uri="http://localhost:8080",  # Replace with your actual redirect URI
+            scope="user-read-playback-position user-modify-playback-state user-read-currently-playing user-modify-playback-state streaming user-read-playback-state"
         ))
 
     async def on_ready(self):

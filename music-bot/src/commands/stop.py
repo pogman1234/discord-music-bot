@@ -5,7 +5,6 @@ from main import bot
 async def setup(bot):  # Add this setup function
     bot.tree.command(name="stop", description="Stops the music and disconnects the bot.")(stop)
 
-@commands.command()
 async def stop(interaction: discord.Interaction):
     """Stops the music and disconnects the bot from the voice channel."""
     try:

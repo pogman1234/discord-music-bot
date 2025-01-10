@@ -5,8 +5,6 @@ from main import bot
 async def setup(bot):  # Add this setup function
     bot.tree.command(name="queue", description="Shows the current queue.")(queue)
 
-
-@commands.command()
 async def queue(interaction: discord.Interaction):
     """Displays the current queue of songs."""
     if not bot.song_queue:
