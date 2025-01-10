@@ -3,6 +3,7 @@ import yt_dlp as youtube_dl
 import os
 import asyncio
 import logging
+import sys
 from threading import Thread, Lock
 from queue import Queue
 
@@ -181,13 +182,16 @@ class MusicBot:
         await asyncio.sleep(10)  # Wait for 10 seconds
 
         voice_client = ctx.guild.voice_client
-        if voice_client:
+        if voice_client and not voice_client.is_playing() and self.song_queue.empty():
             # Check if bot is alone in the voice channel
             if self.is_voice_empty(ctx):
                 logger.info(f"Bot is alone in the voice channel in {ctx.guild.name}. Disconnecting.")
                 await voice_client.disconnect()
                 self.currently_playing = None
-
+                logger.info(f"Exiting the bot with code 0.")
+                sys.exit(0)  # Exit with code 0
+                
+                
     def is_voice_empty(self, ctx):
         """Checks if the voice channel is empty (except for the bot)."""
         voice_client = ctx.guild.voice_client
