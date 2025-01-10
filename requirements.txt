@@ -1,7 +1,6 @@
 discord.py
-youtube-dl
-requests
-ffmpeg-python
-python-dotenv
+yt_dlp
 PyNaCl
+python-dotenv
+asyncio
 validators

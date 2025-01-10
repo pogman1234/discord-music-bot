@@ -1,85 +1,77 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 from dotenv import load_dotenv
-from bot import MusicBot
 import logging
+import asyncio
+from bot import MusicBot
 
+# Load environment variables
 load_dotenv()
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.voice_states = True
-
-bot = commands.Bot(command_prefix="/", intents=intents)
-
-# Configure logging
+# --- Logging Setup ---
 logger = logging.getLogger('discord')
-logger.setLevel(logging.DEBUG)  # Set the minimum level of logs to capture
-handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
-handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)  # Set the minimum level to log (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
+# Create a file handler to write logs to a file
+file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+file_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(file_handler)
+
+# Create a stream handler to print logs to the console
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(console_handler)
+
+# --- Intents Setup ---
+intents = discord.Intents.default()
+intents.message_content = True  # Needed for reading message content
+intents.voice_states = True  # Needed for voice-related events
+
+# --- Bot Setup ---
+bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=intents)
+
+# --- Event: on_ready ---
 @bot.event
 async def on_ready():
-    print(f"We have logged in as {bot.user}")
-    bot.music_bot = MusicBot(bot)
-    logger.info(f"Bot started and logged in as {bot.user}")
+    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+
+    # Sync slash commands (register them with Discord)
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        logger.info(f"Synced {len(synced)} command(s)")
     except Exception as e:
-        print(e)
+        logger.error(f"Failed to sync commands: {e}")
 
-# Test command (directly in main.py)
-@bot.command()
-async def ping(ctx):
-    print("Ping command received!")
-    logger.info("Ping command received!")
-    await ctx.send("Pong!")
+    print(f"Bot is ready. Logged in as {bot.user}")
+    print("------")
 
-async def load_extensions():
+    bot.music_bot = MusicBot(bot)
+
+# --- Command: /ping ---
+@bot.tree.command(name="ping", description="Replies with Pong!")
+async def ping(interaction: discord.Interaction):
+    logger.info(f"'/ping' command used by {interaction.user} in {interaction.guild}")
+    await interaction.response.send_message("Pong!", ephemeral=True)
+
+# --- Load Cogs ---
+async def load_cogs():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     commands_dir = os.path.join(base_dir, "commands")
-
-    print(f"Attempting to load extensions from: {commands_dir}")  # Debug print
-    logger.debug(f"Attempting to load extensions from: {commands_dir}")
-
     for filename in os.listdir(commands_dir):
         if filename.endswith(".py"):
-            module_name = f"commands.{filename[:-3]}"
-            print(f"Trying to load: {module_name}")  # Debug print
-            logger.debug(f"Trying to load: {module_name}")
+            extension = filename[:-3]
             try:
-                await bot.load_extension(module_name)
-                print(f"Successfully loaded extension: {module_name}")
-                logger.info(f"Successfully loaded extension: {module_name}")
+                await bot.load_extension(f"commands.{extension}")
+                logger.info(f"Loaded cog: {extension}")
             except Exception as e:
-                print(f"Failed to load extension {module_name}: {e}")
-                logger.error(f"Failed to load extension {module_name}: {e}")
-        else:
-            print(f"Skipping non-python file: {filename}")  # Debug print
-            logger.debug(f"Skipping non-python file: {filename}")
+                logger.error(f"Failed to load cog {extension}: {e}")
 
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        #await ctx.send("Invalid command used.")
-        logger.warning(f"Invalid command used in {ctx.guild}: {ctx.message.content}")
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("Missing required argument.")
-        logger.warning(f"Missing argument in {ctx.guild}: {ctx.message.content}")
-    else:
-        #await ctx.send("An error occurred while processing your command.")
-        logger.error(f"An error occurred in {ctx.guild}: {error}")
-
+# --- Main Function ---
 async def main():
-    await load_extensions()
-    try:
-        await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
-    except Exception as e:
-        logger.critical(f"Failed to start the bot: {e}")
+    await load_cogs()
+    await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
