@@ -1,67 +1,71 @@
-
+import youtube_dl
 import discord
-from discord.ext import commands
-import logging
-from collections import deque
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
-import os
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+class MusicBot:
+    def __init__(self, bot):
+        self.bot = bot
+        self.queue = []  # Initialize the queue here
+        self.ytdl_options = {
+            'format': 'bestaudio/best',
+            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+            'restrictfilenames': True,
+            'noplaylist': True,
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'logtostderr': False,
+            'quiet': True,
+            'no_warnings': True,
+            'default_search': 'auto',
+            'source_address': '0.0.0.0'  # bind to ipv4 since ipv6 addresses cause issues sometimes
+        }
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+        self.ffmpeg_options = {
+            'options': '-vn'
+        }
 
-# Spotify API credentials
-SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
-SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
+    async def play_youtube_url(self, ctx, url):
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
 
-# Initialize the Spotify client
-client_credentials_manager = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID, client_secret=SPOTIPY_CLIENT_SECRET)
-sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+        if voice_client is None:
+            channel = ctx.author.voice.channel
+            voice_client = await channel.connect()
 
-class MusicBot(commands.Bot):
-    def __init__(self, intents, application_id):
-        super().__init__(command_prefix='/', intents=intents, application_id=application_id)
-        self.voice_client = None
-        self.song_queue = deque()
-        self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id=SPOTIPY_CLIENT_ID,
-            client_secret=SPOTIPY_CLIENT_SECRET,
-            redirect_uri="http://localhost:8080",  # Replace with your actual redirect URI
-            scope="user-read-playback-position user-modify-playback-state user-read-currently-playing user-modify-playback-state streaming user-read-playback-state"
-        ))
+        # Download the song
+        with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
+            try:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
+            except Exception as e:
+                print(f"Error downloading audio: {e}")
+                return
 
-    async def on_ready(self):
-        print(f'Logged in as {self.user.name}')
+        # Create a StreamPlayer to handle playback and queue
+        player = discord.FFmpegPCMAudio(executable="ffmpeg", source=filename)
 
-    async def on_message(self, message):
-        if message.author == self.user:
-            return
-        await self.process_commands(message)
-
-    async def setup_hook(self):
-        # Sync commands globally
-        await self.tree.sync()
-
-    async def on_command_error(self, ctx, error):
-        if isinstance(error, commands.CommandNotFound):
-            await ctx.send("Invalid command. Use `/help` to see available commands.", ephemeral=True)
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(f"Missing argument: {error.param.name}", ephemeral=True)
-        elif isinstance(error, commands.CommandInvokeError):
-            original_error = error.original
-            if isinstance(original_error, discord.HTTPException):
-                if original_error.status == 403:
-                    await ctx.send("I don't have permission to do that.", ephemeral=True)
-                elif original_error.status == 500:
-                    logger.exception(f"Internal server error: {original_error}")
-                    await ctx.send("An unexpected error occurred on Discord's end.", ephemeral=True)
+        # Add an after callback to play the next song or cleanup
+        def after_playing(err):
+            if err:
+                print(f'Player error: {err}')
             else:
-                logger.exception(f"An error occurred during command execution: {original_error}")
-                await ctx.send("An unexpected error occurred.", ephemeral=True)
-        else:
-            logger.error(f"An error occurred: {error}")
-            await ctx.send("An unexpected error occurred.", ephemeral=True)
+                if self.queue:
+                    next_song_url = self.queue.pop(0)
+                    coro = self.play_youtube_url(ctx, next_song_url)
+                    fut = discord.run_coroutine_threadsafe(coro, self.bot.loop)
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print(f"Error while playing next song: {e}")
+                else:
+                    # Cleanup after playback if queue is empty
+                    coro = voice_client.disconnect()
+                    fut = discord.run_coroutine_threadsafe(coro, self.bot.loop)
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print(f"Error while disconnecting: {e}")
+            try:
+                os.remove(filename)  # Remove the downloaded file
+            except Exception as e:
+                print(f"Error removing file: {e}")
+
+        voice_client.play(player, after=after_playing)

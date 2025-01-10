@@ -1,67 +1,59 @@
-import asyncio
-import discord
 from discord.ext import commands
-from main import bot
+import discord
+import youtube_dl
+import validators
 
-async def setup(bot):  # Add this setup function
-    bot.tree.command(name="play", description="Play a song from Spotify")(play_song)
+class Play(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
 
-async def play_song(interaction: discord.Interaction, query: str):
-    await interaction.response.defer()
-    """Plays a song from Spotify based on the provided query."""
-    try:
-        # Check if the user is in a voice channel
-        if not interaction.user.voice:
-            await interaction.followup.send("You need to be in a voice channel to play music!", ephemeral=True)
+    @commands.command()
+    async def play(self, ctx, *, arg):
+        """Plays audio from a YouTube URL or search term."""
+        print("play command used")  # Debug print
+        await ctx.defer()
+
+        if not ctx.author.voice:
+            await ctx.followup.send("You are not connected to a voice channel!")
             return
 
-        voice_channel = interaction.user.voice.channel
-
-        # Connect to the voice channel
-        try:
-            voice_client = await voice_channel.connect()
-            bot.voice_client = voice_client
-        except discord.ClientException:
-            # Already connected to a voice channel
-            voice_client = discord.utils.get(bot.voice_clients, guild=interaction.guild)
-
-        # Search for the song on Spotify
-        results = bot.sp.search(q=query, type='track', limit=1)
-        if not results['tracks']['items']:
-            await interaction.followup.send("Song not found on Spotify.", ephemeral=True)
-            return
-
-        track = results['tracks']['items'][0]
-        track_url = track['external_urls']['spotify']
-
-        # Add the track URL to the queue
-        bot.song_queue.append(track)  # Add the track object to the queue
-
-        # If not playing, start playing from the queue
-        if not bot.voice_client.is_playing():
-            await play_next(interaction)
+        # Check if the argument is a URL or a search term
+        if not validators.url(arg):
+            # Search for the song on YouTube
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'noplaylist': True,
+                'quiet': True,
+                'default_search': 'auto',
+            }
+            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                try:
+                    info = ydl.extract_info(f"ytsearch:{arg}", download=False)
+                    if 'entries' in info:
+                        entry = info['entries'][0]
+                        url = entry['webpage_url']
+                    else:
+                        await ctx.followup.send("Could not find any results for your query.")
+                        return
+                except Exception as e:
+                    await ctx.followup.send(f"An error occurred while searching: {e}")
+                    return
         else:
-            await interaction.followup.send(f"Added to queue: {track['name']} - {track['artists'][0]['name']}")
+            url = arg
 
-    except Exception as e:
-        await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+        await ctx.followup.send(f"Playing {url}")
 
-async def play_next(interaction: discord.Interaction):
-    """Plays the next song in the queue."""
-    if not bot.song_queue:
-        await interaction.followup.send("Queue is empty.", ephemeral=True)
-        return
+        # Add to queue and play
+        if self.is_playing(ctx):
+            self.bot.music_bot.queue.append(url)
+            await ctx.followup.send(f"Added to queue: {url}")
+        else:
+            await self.bot.music_bot.play_youtube_url(ctx, url)
 
-    track = bot.song_queue.popleft()  # Get the next track from the queue
+    def is_playing(self, ctx):
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+        return voice_client and voice_client.is_playing()
 
-    # Get the user's Spotify playback device
-    devices = bot.sp.devices()
-    if not devices['devices']:
-        await interaction.followup.send("No active Spotify devices found.", ephemeral=True)
-        return
-    device_id = devices['devices'][0]['id']
-
-    # Start playback on the user's device
-    bot.sp.start_playback(device_id=device_id, uris=[track['uri']])
-
-    await interaction.followup.send(f"Now playing: {track['name']} - {track['artists'][0]['name']}")
+async def setup(bot):
+    print("loading play cog")  # Debug print
+    await bot.add_cog(Play(bot))
