@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 import logging
 import asyncio
 from bot import MusicBot
-from threading import Thread
+import threading
+import uvicorn
+from fastapi import FastAPI
 
 # Load environment variables
 load_dotenv()
@@ -32,6 +34,16 @@ intents.voice_states = True  # Needed for voice-related events
 
 # --- Bot Setup ---
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=intents)
+
+# --- FastAPI Setup for Health Check ---
+app = FastAPI()
+
+@app.get("/healthz")
+async def health_check():
+    return {"status": "ok"}
+
+def run_webserver():
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 # --- Event: on_ready ---
 @bot.event
@@ -69,6 +81,11 @@ async def load_cogs():
 
 async def start_bot():
     await load_cogs()
+    # Start the health check web server in a separate thread
+    webserver_thread = threading.Thread(target=run_webserver)
+    webserver_thread.daemon = True
+    webserver_thread.start()
+    # Start the bot
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 # --- Start Bot ---
