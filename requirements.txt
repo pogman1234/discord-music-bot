@@ -1,6 +1,8 @@
+fastapi
+uvicorn
 discord.py
-yt_dlp
-PyNaCl
 python-dotenv
-asyncio
+yt-dlp
+PyNaCl
 validators
+asyncio

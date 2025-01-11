@@ -3,9 +3,10 @@ import yt_dlp as youtube_dl
 import os
 import asyncio
 import logging
-import sys
 from threading import Thread, Lock
 from queue import Queue
+from fastapi import FastAPI
+import uvicorn
 
 logger = logging.getLogger('discord')
 
@@ -198,3 +199,18 @@ class MusicBot:
         if voice_client:
             return len(voice_client.channel.members) == 1
         return True  # No voice client means it's considered empty
+
+# --- FastAPI for Health Check ---
+app = FastAPI()
+
+@app.get("/healthz")
+def health_check():
+    return {"status": "ok"}
+
+# --- Start the health check server in a separate thread ---
+def run_webserver():
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+webserver_thread = Thread(target=run_webserver)
+webserver_thread.daemon = True
+webserver_thread.start()
