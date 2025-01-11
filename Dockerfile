@@ -23,4 +23,4 @@ EXPOSE 8080
 ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
 
 # Run main.py when the container launches
-CMD ["python", "music-bot/src/main.py"]
+CMD [["sh", "-c", "uvicorn bot:app --host 0.0.0.0 --port $PORT --reload & python music-bot/src/main.py"]
