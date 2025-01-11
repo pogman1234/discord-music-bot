@@ -26,7 +26,11 @@ class MusicBot:
             'quiet': True,
             'no_warnings': True,
             'default_search': 'auto',
-            'source_address': '0.0.0.0'
+            'source_address': '0.0.0.0',
+            'cookiefile': 'cookies.txt',
+            'sleep_requests': 2,    
+            'sleep_interval': 1,    
+            'max_sleep_interval': 3 
         }
         self.ffmpeg_options = {
             'options': '-vn',
