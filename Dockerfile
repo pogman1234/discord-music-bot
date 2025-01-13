@@ -18,6 +18,7 @@ EXPOSE 8080
 
 # Define environment variable for the bot token (set this when running the container)
 ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
 
 # Run main.py when the container launches
 CMD ["python", "music-bot/src/main.py"]

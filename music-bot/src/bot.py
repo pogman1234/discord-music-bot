@@ -4,8 +4,9 @@ import asyncio
 import logging
 from threading import Thread, Lock
 from queue import Queue
-import yt_dlp as youtube_dl  # Still used for downloading
+import yt_dlp as youtube_dl
 from googleapiclient.discovery import build
+from flask import Flask, render_template
 
 logger = logging.getLogger('discord')
 
@@ -42,6 +43,10 @@ class MusicBot:
         self.voice_lock = asyncio.Lock()
         self.queue_lock = Lock()
         self.disconnect_timer = None
+    
+    def get_currently_playing(self):
+        """Returns information about the currently playing song or None."""
+        return self.currently_playing
 
     async def play_song(self, ctx, song_info):
         """Plays a song."""
