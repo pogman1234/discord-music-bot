@@ -159,33 +159,39 @@ class MusicBot:
                     'guild': ctx.guild.name
                 })
                 asyncio.create_task(self.download_and_play(ctx, song_info))
-
                 return song_info
 
         except Exception as e:
             logger.error(f"Error in add_to_queue: {e}", exc_info=True)
             await ctx.channel.send("An error occurred while adding the song to the queue.")
 
-    async def download_song(self, song_info):
-        """Downloads a song using yt_dlp."""
+    async def download_and_play(self, ctx, song_info):
+        """Downloads a song using yt_dlp and then adds it to the queue."""
         try:
-            logger.info(f"Downloading '{song_info['title']}'", extra={
+            logger.info(f"Downloading '{song_info['title']}' in guild: {ctx.guild.name}", extra={
                 'action': 'download',
                 'url': song_info['url'],
-                'guild': song_info['ctx'].guild.name
+                'guild': ctx.guild.name
             })
             loop = asyncio.get_event_loop()
             with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
                 await loop.run_in_executor(None, lambda: ydl.download([song_info['url']]))
 
-            logger.info(f"Finished downloading '{song_info['title']}'", extra={
+            logger.info(f"Finished downloading '{song_info['title']}' in guild: {ctx.guild.name}", extra={
                 'action': 'download_finished',
                 'url': song_info['url'],
-                'guild': song_info['ctx'].guild.name
+                'guild': ctx.guild.name
             })
+
+            # Add song to playing queue
+            if not ctx.voice_client.is_playing() and self.currently_playing is None:
+                await self.play_song(ctx, song_info)
+            else:
+                await self.song_queue.put(song_info)
 
         except Exception as e:
             logger.error(f"Error downloading {song_info['url']}: {e}", exc_info=True)
+            await ctx.channel.send(f"An error occurred while downloading '{song_info['title']}'.")
 
     async def start_disconnect_timer(self, ctx):
         """Starts the disconnect timer."""
@@ -196,32 +202,4 @@ class MusicBot:
         if self.disconnect_timer:
             self.disconnect_timer.cancel()  # Cancel any existing timer
 
-        self.disconnect_timer = self.bot.loop.create_task(self.disconnect_after_delay(ctx))
-
-    async def disconnect_after_delay(self, ctx):
-        """Disconnects from the voice channel after a delay if no one else is in the channel."""
-        await asyncio.sleep(10)  # Wait for 10 seconds
-
-        voice_client = ctx.guild.voice_client
-        if voice_client:
-            # Check if bot is alone in the voice channel
-            if self.is_voice_empty(ctx):
-                logger.info(f"Bot is alone in the voice channel in {ctx.guild.name}. Disconnecting.", extra={
-                    'action': 'disconnect',
-                    'guild': ctx.guild.name
-                })
-                await voice_client.disconnect()
-                self.currently_playing = None
-                logger.info(f"Exiting the bot with code 0.")
-                sys.exit(0)  # Exit with code 0
-
-    def is_voice_empty(self, ctx):
-        """Checks if the voice channel is empty (except for the bot)."""
-        voice_client = ctx.guild.voice_client
-        if voice_client:
-            return len(voice_client.channel.members) == 1
-        return True  # No voice client means it's considered empty
-
-    def get_currently_playing(self):
-        """Returns information about the currently playing song or None."""
-        return self.currently_playing
+        self.disconnect_timer = self

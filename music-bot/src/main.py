@@ -35,8 +35,7 @@ class GoogleCloudLogFormatter(logging.Formatter):
             log_entry["exc_info"] = self.formatException(record.exc_info)
 
         # Add extra fields if available (for structured logging)
-        if hasattr(record, 'extra'):
-            log_entry.update(record.extra)
+        log_entry.update(record.__dict__.get('extra', {}))
 
         return json.dumps(log_entry)
 
