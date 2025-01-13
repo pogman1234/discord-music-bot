@@ -42,6 +42,7 @@ youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 # --- Flask Setup for Health Check and Frontend ---
 app = Flask(__name__, template_folder='/app/templates')
 
+
 @app.route("/healthz")
 def health_check():
     return {"status": "ok"}
@@ -89,13 +90,13 @@ async def start_bot():
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
+
 # --- Start Bot and Flask App ---
 async def main():
     # Run Flask app in a separate thread
     flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))))
     flask_thread.daemon = True
     flask_thread.start()
-
     await start_bot()
 
 if __name__ == "__main__":
