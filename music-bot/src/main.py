@@ -10,7 +10,6 @@ from googleapiclient.discovery import build
 import threading
 import json
 from flask import Flask, render_template
-import sys
 
 # --- Load environment variables ---
 load_dotenv()
@@ -67,7 +66,7 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # --- Flask Setup for Health Check and Frontend ---
-app = Flask(__name__, template_folder='/app/music-bot/src/templates')
+app = Flask(__name__, template_folder='/app/templates')
 
 @app.route("/healthz")
 def health_check():
