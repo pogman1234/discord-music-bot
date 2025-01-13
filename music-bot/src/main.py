@@ -9,8 +9,9 @@ from bot import MusicBot
 from googleapiclient.discovery import build
 import threading
 import uvicorn
-from fastapi import FastAPI
-from flask import Flask, render_template
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 
 # Load environment variables
 load_dotenv()
@@ -41,12 +42,18 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=inten
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-# --- FastAPI Setup for Health Check ---
+# --- FastAPI Setup for Health Check and Frontend ---
 app = FastAPI()
+templates = Jinja2Templates(directory="/app/templates")
 
 @app.get("/healthz")
 async def health_check():
     return {"status": "ok"}
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    song_info = bot.music_bot.get_currently_playing()
+    return templates.TemplateResponse("index.html", {"request": request, "song": song_info})
 
 def run_webserver():
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
@@ -84,17 +91,6 @@ async def load_cogs():
                 logger.info(f"Loaded cog: {extension}")
             except Exception as e:
                 logger.error(f"Failed to load cog {extension}: {e}")
-                
-# --- Flask App for Frontend ---
-flask_app = Flask(__name__, template_folder='/app/music-bot/src/templates')
-
-@flask_app.route("/")
-def index():
-    song_info = bot.music_bot.get_currently_playing()
-    return render_template("index.html", song=song_info)
-
-def run_flask():
-    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 async def start_bot():
     await load_cogs()
@@ -104,14 +100,7 @@ async def start_bot():
     webserver_thread.daemon = True
     webserver_thread.start()
 
-    # Start the Flask web server in a separate thread
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-
-    # Start the bot
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
-
 
 # --- Start Bot ---
 async def main():
