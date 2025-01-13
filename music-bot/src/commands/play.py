@@ -1,7 +1,6 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
-import yt_dlp as youtube_dl
 import validators
 import asyncio
 import logging
@@ -35,38 +34,12 @@ class Play(commands.Cog):
                     else:
                         await voice_client.move_to(voice_channel)
 
-                # Check if the argument is a URL or a search term
-                if not validators.url(arg):
-                    # Search for the song on YouTube
-                    ydl_opts = {
-                        'format': 'bestaudio/best',
-                        'noplaylist': True,
-                        'quiet': True,
-                        'default_search': 'auto',
-                        'logtostderr': False
-                    }
-                    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        try:
-                            info = ydl.extract_info(f"ytsearch:{arg}", download=False)
-                            if 'entries' in info:
-                                entry = info['entries'][0]
-                                url = entry['webpage_url']
-                            else:
-                                await interaction.followup.send("Could not find any results for your query.")
-                                return
-                        except Exception as e:
-                            logger.info(f"error {e}")
-                            await interaction.followup.send("Could not find any results for your query.")
-                            return
-                else:
-                    url = arg
-
                 # Add to queue
-                song_info = await self.bot.music_bot.add_to_queue(ctx, url)
+                song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
 
                 if song_info:
                     if not self.is_playing(ctx):
-                        await interaction.followup.send(f"Playing [{song_info['title']}](<{url}>)")
+                        await interaction.followup.send(f"Playing [{song_info['title']}](<{song_info['url']}>)")
                     else:
                         # Send "Added to queue" message with clickable title
                         embed = discord.Embed(title="Added to Queue", description=f"[{song_info['title']}]({song_info['url']})", color=discord.Color.green())
