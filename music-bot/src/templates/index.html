@@ -1,34 +1,69 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Poggles Music Bot</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Music Bot</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
             text-align: center;
         }
-        #container {
-            margin: 0 auto;
-            width: 500px;
+        header {
+            background-color: #333;
+            color: #fff;
+            padding: 10px 0;
+        }
+        main {
+            padding: 20px;
+        }
+        footer {
+            background-color: #333;
+            color: #fff;
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            padding: 10px 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
         img {
             max-width: 100%;
             height: auto;
+            margin-top: 15px;
         }
     </style>
 </head>
 <body>
-    <div id="container">
-        <h1>Now Playing</h1>
-        <div id="song-info">
-            {% if song %}
-                <h2>{{ song.title }}</h2>
-                <img src="{{ song.thumbnail }}" alt="Thumbnail">
+    <header>
+        <h1>Discord Music Bot</h1>
+    </header>
+    <main>
+        <div class="container">
+            <section id="now-playing">
+                {% if song %}
+                <h2>Now Playing:</h2>
+                <p>{{ song.title }}</p>
+                <img src="{{ song.thumbnail }}" alt="Song Thumbnail">
                 <p><a href="{{ song.url }}" target="_blank">Watch on YouTube</a></p>
-            {% else %}
-                <p>Nothing is currently playing.</p>
-            {% endif %}
-        </div>
-    </div>
+                {% else %}
+                <p>No song is currently playing.</p>
+                {% endif %}
+            </section>
+                    </div>
+    </main>
+    <footer>
+        <p>&copy; 2025 pogman. All rights reserved.</p>
+    </footer>
 </body>
 </html>
