@@ -9,22 +9,40 @@ from bot import MusicBot
 from googleapiclient.discovery import build
 from flask import Flask, render_template
 import threading
+import sys
 
-# Load environment variables
+# --- Load environment variables ---
 load_dotenv()
 
 # --- Logging Setup ---
+class GoogleCloudLogFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "severity": record.levelname,  # Or use a mapping to GCP severity levels
+            "message": record.getMessage(),
+            "component": record.name,
+            "time": self.formatTime(record),
+            "logging.googleapis.com/sourceLocation": {
+                "file": record.filename,
+                "line": record.lineno,
+                "function": record.funcName
+            },
+            # Add other fields as needed
+        }
+        return json.dumps(log_entry)
+
+# Configure logging
 logger = logging.getLogger('discord')
 logger.setLevel(logging.INFO)
 
-# Create a file handler to write logs to a file
+# Log to a file
 file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
-file_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+file_handler.setFormatter(GoogleCloudLogFormatter())
 logger.addHandler(file_handler)
 
-# Create a stream handler to print logs to the console
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+# Log to console
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(GoogleCloudLogFormatter())
 logger.addHandler(console_handler)
 
 # --- Intents Setup ---
@@ -41,7 +59,6 @@ youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # --- Flask Setup for Health Check and Frontend ---
 app = Flask(__name__, template_folder='/app/music-bot/src/templates')
-
 
 @app.route("/healthz")
 def health_check():
@@ -90,13 +107,13 @@ async def start_bot():
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
-
 # --- Start Bot and Flask App ---
 async def main():
     # Run Flask app in a separate thread
     flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))))
     flask_thread.daemon = True
     flask_thread.start()
+    
     await start_bot()
 
 if __name__ == "__main__":
