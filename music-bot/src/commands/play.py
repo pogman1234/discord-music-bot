@@ -2,8 +2,6 @@ from discord.ext import commands
 from discord import app_commands
 import discord
 import yt_dlp as youtube_dl
-import validators
-import asyncio
 import logging
 
 logger = logging.getLogger('discord')
@@ -36,7 +34,7 @@ class Play(commands.Cog):
             song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
 
             if song_info:
-                if not self.bot.music_bot.is_playing(ctx):
+                if not self.is_playing(ctx):
                     await interaction.followup.send(f"Playing [{song_info['title']}](<{song_info['url']}>)")
                 else:
                     # Send "Added to queue" message with clickable title
@@ -44,7 +42,7 @@ class Play(commands.Cog):
                     embed.set_thumbnail(url=song_info.get('thumbnail'))
                     await interaction.followup.send(embed=embed)
         except Exception as e:
-            logger.error(f"Error in play command: {e}")
+            logger.error(f"Error in play command: {e}", exc_info=True)
             await interaction.followup.send("An error occurred while processing your request.")
 
     def is_playing(self, ctx):
