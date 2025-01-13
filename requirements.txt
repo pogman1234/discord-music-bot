@@ -7,3 +7,4 @@ PyNaCl
 validators
 asyncio
 google-api-python-client
+flask
