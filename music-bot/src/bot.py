@@ -1,12 +1,12 @@
 import discord
+import yt_dlp as youtube_dl
 import os
 import asyncio
 import logging
 from threading import Thread, Lock
 from queue import Queue
-import yt_dlp as youtube_dl
+import sys
 from googleapiclient.discovery import build
-from flask import Flask, render_template
 
 logger = logging.getLogger('discord')
 
@@ -28,10 +28,7 @@ class MusicBot:
             'no_warnings': True,
             'default_search': 'auto',
             'source_address': '0.0.0.0',
-            'cookiefile': 'cookies.txt',
-            'sleep_requests': 2,    
-            'sleep_interval': 1,    
-            'max_sleep_interval': 3 
+            'cookiefile': '/app/cookies.txt'
         }
         self.ffmpeg_options = {
             'options': '-vn',
@@ -43,10 +40,6 @@ class MusicBot:
         self.voice_lock = asyncio.Lock()
         self.queue_lock = Lock()
         self.disconnect_timer = None
-    
-    def get_currently_playing(self):
-        """Returns information about the currently playing song or None."""
-        return self.currently_playing
 
     async def play_song(self, ctx, song_info):
         """Plays a song."""
@@ -98,16 +91,19 @@ class MusicBot:
             await self.play_song(ctx, next_song_info)
         except asyncio.QueueEmpty:
             logger.info(f"Queue is empty in {ctx.guild.name}.")
+            # Add logging for when a song is skipped
+            if ctx.voice_client.is_playing():
+                logger.info(f"Song skipped in {ctx.guild.name}.")
             self.currently_playing = None
         finally:
             self.song_queue.task_done()
 
-    async def add_to_queue(self, ctx, search_term):
-        """Searches for a video and adds it to the queue."""
+    async def add_to_queue(self, ctx, url):
+        """Adds a song to the queue."""
         try:
             # Use the YouTube Data API to search for the video
             search_response = self.youtube.search().list(
-                q=search_term,
+                q=url,
                 part="snippet",
                 type="video",
                 maxResults=1
@@ -119,6 +115,8 @@ class MusicBot:
 
             # Get the first result
             video_id = search_response['items'][0]['id']['videoId']
+            video_title = search_response['items'][0]['snippet']['title']
+            thumbnail = search_response['items'][0]['snippet']['thumbnails']['default']['url']
             url = f"https://www.youtube.com/watch?v={video_id}"
 
             with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
@@ -128,8 +126,8 @@ class MusicBot:
                 song_info = {
                     'ctx': ctx,
                     'url': url,
-                    'title': info.get('title', url),
-                    'thumbnail': info.get('thumbnail', None),
+                    'title': video_title,
+                    'thumbnail': thumbnail,
                     'filename': filename
                 }
 
