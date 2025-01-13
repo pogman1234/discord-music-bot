@@ -73,6 +73,11 @@ async def load_cogs():
 
 async def start_bot():
     await load_cogs()
+    # Start the health check web server in a separate thread
+    webserver_thread = threading.Thread(target=run_webserver)
+    webserver_thread.daemon = True
+    webserver_thread.start()
+    # Start the bot
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 # --- Start Bot ---
