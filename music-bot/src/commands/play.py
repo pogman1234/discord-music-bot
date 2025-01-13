@@ -1,6 +1,7 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
+import yt_dlp as youtube_dl
 import validators
 import asyncio
 import logging
