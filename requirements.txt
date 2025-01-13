@@ -6,3 +6,4 @@ yt-dlp
 PyNaCl
 validators
 asyncio
+google-api-python-client

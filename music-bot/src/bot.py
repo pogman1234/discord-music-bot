@@ -1,18 +1,18 @@
 import discord
-import yt_dlp as youtube_dl
 import os
 import asyncio
 import logging
 from threading import Thread, Lock
 from queue import Queue
-from fastapi import FastAPI
-import uvicorn
+import yt_dlp as youtube_dl  # Still used for downloading
+from googleapiclient.discovery import build
 
 logger = logging.getLogger('discord')
 
 class MusicBot:
-    def __init__(self, bot):
+    def __init__(self, bot, youtube):
         self.bot = bot
+        self.youtube = youtube  # YouTube Data API client
         self.song_queue = asyncio.Queue()
         self.download_queue = Queue()
         self.ytdl_options = {
@@ -26,11 +26,7 @@ class MusicBot:
             'quiet': True,
             'no_warnings': True,
             'default_search': 'auto',
-            'source_address': '0.0.0.0',
-            'cookiefile': 'cookies.txt',
-            'sleep_requests': 2,    
-            'sleep_interval': 1,    
-            'max_sleep_interval': 3 
+            'source_address': '0.0.0.0'
         }
         self.ffmpeg_options = {
             'options': '-vn',
@@ -93,17 +89,30 @@ class MusicBot:
             await self.play_song(ctx, next_song_info)
         except asyncio.QueueEmpty:
             logger.info(f"Queue is empty in {ctx.guild.name}.")
-            # Add logging for when a song is skipped
-            if ctx.voice_client.is_playing():
-                logger.info(f"Song skipped in {ctx.guild.name}.")
             self.currently_playing = None
         finally:
             self.song_queue.task_done()
 
-    async def add_to_queue(self, ctx, url):
-        """Adds a song to the queue."""
-        with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
-            try:
+    async def add_to_queue(self, ctx, search_term):
+        """Searches for a video and adds it to the queue."""
+        try:
+            # Use the YouTube Data API to search for the video
+            search_response = self.youtube.search().list(
+                q=search_term,
+                part="snippet",
+                type="video",
+                maxResults=1
+            ).execute()
+
+            if not search_response.get('items'):
+                await ctx.channel.send("Could not find any results for your query.")
+                return None
+
+            # Get the first result
+            video_id = search_response['items'][0]['id']['videoId']
+            url = f"https://www.youtube.com/watch?v={video_id}"
+
+            with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
                 info = ydl.extract_info(url, download=False)
                 filename = ydl.prepare_filename(info)
 
@@ -129,6 +138,10 @@ class MusicBot:
                         await self.play_song(ctx, song_info)
                     else:
                         await self.song_queue.put(song_info)
+                        # Send a message to the text channel
+                        embed = discord.Embed(title="Added to Queue", description=f"[{song_info['title']}]({song_info['url']})", color=discord.Color.green())
+                        embed.set_thumbnail(url=song_info.get('thumbnail'))
+                        await ctx.channel.send(embed=embed)
 
                     return song_info
                 else:
@@ -138,9 +151,9 @@ class MusicBot:
 
                     return song_info
 
-            except Exception as e:
-                logger.error(f"Error in add_to_queue: {e}")
-                await ctx.channel.send("An error occurred while adding the song to the queue.")
+        except Exception as e:
+            logger.error(f"Error in add_to_queue: {e}")
+            await ctx.channel.send("An error occurred while adding the song to the queue.")
 
     def download_loop(self):
         """
@@ -203,18 +216,3 @@ class MusicBot:
         if voice_client:
             return len(voice_client.channel.members) == 1
         return True  # No voice client means it's considered empty
-
-# --- FastAPI for Health Check ---
-app = FastAPI()
-
-@app.get("/healthz")
-def health_check():
-    return {"status": "ok"}
-
-# --- Start the health check server in a separate thread ---
-def run_webserver():
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-
-webserver_thread = Thread(target=run_webserver)
-webserver_thread.daemon = True
-webserver_thread.start()

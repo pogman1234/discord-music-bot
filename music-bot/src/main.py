@@ -6,16 +6,14 @@ from dotenv import load_dotenv
 import logging
 import asyncio
 from bot import MusicBot
-import threading
-import uvicorn
-from fastapi import FastAPI
+from googleapiclient.discovery import build
 
 # Load environment variables
 load_dotenv()
 
 # --- Logging Setup ---
 logger = logging.getLogger('discord')
-logger.setLevel(logging.INFO)  # Changed to INFO
+logger.setLevel(logging.INFO)
 
 # Create a file handler to write logs to a file
 file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
@@ -35,15 +33,9 @@ intents.voice_states = True  # Needed for voice-related events
 # --- Bot Setup ---
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=intents)
 
-# --- FastAPI Setup for Health Check ---
-app = FastAPI()
-
-@app.get("/healthz")
-async def health_check():
-    return {"status": "ok"}
-
-def run_webserver():
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+# --- YouTube Data API Setup ---
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # --- Event: on_ready ---
 @bot.event
@@ -60,7 +52,7 @@ async def on_ready():
     print(f"Bot is ready. Logged in as {bot.user}")
     print("------")
 
-    bot.music_bot = MusicBot(bot)
+    bot.music_bot = MusicBot(bot, youtube)
 
 # --- Command: /ping ---
 @bot.tree.command(name="ping", description="Replies with Pong!")
@@ -81,11 +73,6 @@ async def load_cogs():
 
 async def start_bot():
     await load_cogs()
-    # Start the health check web server in a separate thread
-    webserver_thread = threading.Thread(target=run_webserver)
-    webserver_thread.daemon = True
-    webserver_thread.start()
-    # Start the bot
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
 # --- Start Bot ---
