@@ -158,7 +158,7 @@ class MusicBot:
                     'source': 'download',
                     'guild': ctx.guild.name
                 })
-                asyncio.create_task(self.download_song(song_info))
+                asyncio.create_task(self.download_and_play(ctx, song_info))
 
                 return song_info
 
@@ -167,7 +167,7 @@ class MusicBot:
             await ctx.channel.send("An error occurred while adding the song to the queue.")
 
     async def download_song(self, song_info):
-        """Downloads a song in the background."""
+        """Downloads a song using yt_dlp."""
         try:
             logger.info(f"Downloading '{song_info['title']}'", extra={
                 'action': 'download',
@@ -178,16 +178,10 @@ class MusicBot:
             with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
                 await loop.run_in_executor(None, lambda: ydl.download([song_info['url']]))
 
-            # Add song to playing queue
-            ctx = song_info['ctx']
-            if not ctx.voice_client.is_playing() and self.currently_playing is None:
-                await self.play_song(ctx, song_info)
-            else:
-                await self.song_queue.put(song_info)
             logger.info(f"Finished downloading '{song_info['title']}'", extra={
                 'action': 'download_finished',
                 'url': song_info['url'],
-                'guild': ctx.guild.name
+                'guild': song_info['ctx'].guild.name
             })
 
         except Exception as e:
