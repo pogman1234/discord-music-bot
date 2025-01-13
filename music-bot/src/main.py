@@ -7,10 +7,9 @@ import logging
 import asyncio
 from bot import MusicBot
 from googleapiclient.discovery import build
-from flask import Flask, render_template
 import threading
-import sys
 import json
+from flask import Flask, render_template
 
 # --- Load environment variables ---
 load_dotenv()
@@ -19,7 +18,7 @@ load_dotenv()
 class GoogleCloudLogFormatter(logging.Formatter):
     def format(self, record):
         log_entry = {
-            "severity": record.levelname,  # Or use a mapping to GCP severity levels
+            "severity": record.levelname,
             "message": record.getMessage(),
             "component": record.name,
             "time": self.formatTime(record),
@@ -28,8 +27,16 @@ class GoogleCloudLogFormatter(logging.Formatter):
                 "line": record.lineno,
                 "function": record.funcName
             },
-            # Add other fields as needed
         }
+
+        # Include exception info if available
+        if record.exc_info:
+            log_entry["exc_info"] = self.formatException(record.exc_info)
+
+        # Add extra fields if available (for structured logging)
+        if hasattr(record, 'extra'):
+            log_entry.update(record.extra)
+
         return json.dumps(log_entry)
 
 # Configure logging
@@ -59,7 +66,7 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # --- Flask Setup for Health Check and Frontend ---
-app = Flask(__name__, template_folder='/app/music-bot/src/templates')
+app = Flask(__name__, template_folder='/app/templates')  # Adjusted template folder path
 
 @app.route("/healthz")
 def health_check():
@@ -80,7 +87,7 @@ async def on_ready():
         synced = await bot.tree.sync()
         logger.info(f"Synced {len(synced)} command(s)")
     except Exception as e:
-        logger.error(f"Failed to sync commands: {e}")
+        logger.error(f"Failed to sync commands: {e}", exc_info=True)
 
     print(f"Bot is ready. Logged in as {bot.user}")
     print("------")
@@ -100,9 +107,9 @@ async def load_cogs():
             extension = filename[:-3]
             try:
                 await bot.load_extension(f"commands.{extension}")
-                logger.info(f"Loaded cog: {extension}")
+                logger.info(f"Loaded cog: {extension}", extra={'cog': extension})
             except Exception as e:
-                logger.error(f"Failed to load cog {extension}: {e}")
+                logger.error(f"Failed to load cog {extension}: {e}", exc_info=True, extra={'cog': extension})
 
 async def start_bot():
     await load_cogs()
