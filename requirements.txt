@@ -1,10 +1,7 @@
-fastapi
-uvicorn
+Flask
 discord.py
 python-dotenv
 yt-dlp
 PyNaCl
 validators
-asyncio
 google-api-python-client
-flask

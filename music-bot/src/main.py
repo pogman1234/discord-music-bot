@@ -7,11 +7,8 @@ import logging
 import asyncio
 from bot import MusicBot
 from googleapiclient.discovery import build
+from flask import Flask, render_template
 import threading
-import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
 
 # Load environment variables
 load_dotenv()
@@ -42,21 +39,18 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=inten
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-# --- FastAPI Setup for Health Check and Frontend ---
-app = FastAPI()
-templates = Jinja2Templates(directory="/app/templates")
+# --- Flask Setup for Health Check and Frontend ---
+app = Flask(__name__, template_folder='/app/templates')
 
-@app.get("/healthz")
-async def health_check():
+
+@app.route("/healthz")
+def health_check():
     return {"status": "ok"}
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+@app.route("/")
+def index():
     song_info = bot.music_bot.get_currently_playing()
-    return templates.TemplateResponse("index.html", {"request": request, "song": song_info})
-
-def run_webserver():
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    return render_template("index.html", song=song_info)
 
 # --- Event: on_ready ---
 @bot.event
@@ -94,16 +88,15 @@ async def load_cogs():
 
 async def start_bot():
     await load_cogs()
-
-    # Start the health check web server in a separate thread
-    webserver_thread = threading.Thread(target=run_webserver)
-    webserver_thread.daemon = True
-    webserver_thread.start()
-
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
-# --- Start Bot ---
+
+# --- Start Bot and Flask App ---
 async def main():
+    # Run Flask app in a separate thread
+    flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))))
+    flask_thread.daemon = True
+    flask_thread.start()
     await start_bot()
 
 if __name__ == "__main__":
