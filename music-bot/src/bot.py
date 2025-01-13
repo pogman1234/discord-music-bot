@@ -15,7 +15,6 @@ class MusicBot:
         self.bot = bot
         self.youtube = youtube  # YouTube Data API client
         self.song_queue = asyncio.Queue()
-        self.download_queue = Queue()
         self.ytdl_options = {
             'format': 'bestaudio/best',
             'outtmpl': 'music/%(extractor)s-%(id)s-%(title)s.%(ext)s',
@@ -32,13 +31,10 @@ class MusicBot:
         }
         self.ffmpeg_options = {
             'options': '-vn',
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
         }
-        self.download_thread = Thread(target=self.download_loop)
-        self.download_thread.daemon = True
-        self.download_thread.start()
         self.currently_playing = None
         self.voice_lock = asyncio.Lock()
-        self.queue_lock = Lock()
         self.disconnect_timer = None
 
     async def play_song(self, ctx, song_info):
@@ -57,11 +53,13 @@ class MusicBot:
                 if not os.path.exists(filename):
                     logger.error(f"File not found: {filename}")
                     await ctx.channel.send("The requested song could not be found.")
+                    await self.song_finished(ctx)
                     return
 
                 # Play the song
+                loop = asyncio.get_event_loop()
                 player = discord.FFmpegPCMAudio(filename, **self.ffmpeg_options)
-                voice_client.play(player, after=lambda e: self.bot.loop.create_task(self.song_finished(ctx)))
+                voice_client.play(player, after=lambda e: loop.call_soon_threadsafe(self.bot.loop.create_task, self.song_finished(ctx)))
                 self.currently_playing = song_info
                 logger.info(f"Playing '{song_info['title']}' in {ctx.guild.name}")
 
@@ -74,6 +72,7 @@ class MusicBot:
             except Exception as e:
                 logger.error(f"Error in play_song: {e}")
                 await ctx.channel.send("An error occurred while trying to play the song.")
+                await self.song_finished(ctx)
 
     async def song_finished(self, ctx):
         # If bot is alone, start timer
@@ -91,9 +90,6 @@ class MusicBot:
             await self.play_song(ctx, next_song_info)
         except asyncio.QueueEmpty:
             logger.info(f"Queue is empty in {ctx.guild.name}.")
-            # Add logging for when a song is skipped
-            if ctx.voice_client.is_playing():
-                logger.info(f"Song skipped in {ctx.guild.name}.")
             self.currently_playing = None
         finally:
             self.song_queue.task_done()
@@ -131,13 +127,6 @@ class MusicBot:
                     'filename': filename
                 }
 
-                # Check if song is already in the queue or being downloaded
-                with self.queue_lock:
-                    if any(s['url'] == url for s in self.song_queue._queue) or any(s['url'] == url for s in self.download_queue.queue):
-                        logger.info(f"'{song_info['title']}' is already in the queue or being downloaded.")
-                        await ctx.channel.send(f"'{song_info['title']}' is already in the queue or being downloaded.")
-                        return None
-
                 if os.path.exists(filename):
                     # Song is already downloaded, add it directly to the song_queue
                     logger.info(f"'{song_info['title']}' found in cache.")
@@ -153,47 +142,33 @@ class MusicBot:
                     return song_info
                 else:
                     # Add song to download queue
-                    self.download_queue.put(song_info)
                     logger.info(f"Added '{song_info['title']}' to the download queue in {ctx.guild.name}")
+                    asyncio.create_task(self.download_song(song_info))
 
                     return song_info
 
         except Exception as e:
             logger.error(f"Error in add_to_queue: {e}")
             await ctx.channel.send("An error occurred while adding the song to the queue.")
+    
+    async def download_song(self, song_info):
+        """Downloads a song in the background."""
+        try:
+            logger.info(f"Downloading '{song_info['title']}'")
+            loop = asyncio.get_event_loop()
+            with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
+                await loop.run_in_executor(None, lambda: ydl.download([song_info['url']]))
 
-    def download_loop(self):
-        """
-        Background loop to handle downloads from the queue.
-        """
-        while True:
-            song_info = self.download_queue.get()  # This will block until a new item is available
-            if song_info is None:  # Could use a sentinel value to signal stopping
-                continue
-            try:
-                with youtube_dl.YoutubeDL(self.ytdl_options) as ydl:
-                    logger.info(f"Downloading '{song_info['title']}'")
-                    info_result = ydl.extract_info(song_info['url'], download=True)
-                    filename = ydl.prepare_filename(info_result)
+            # Add song to playing queue
+            ctx = song_info['ctx']
+            if not ctx.voice_client.is_playing() and self.currently_playing is None:
+                await self.play_song(ctx, song_info)
+            else:
+                await self.song_queue.put(song_info)
+            logger.info(f"Finished downloading '{song_info['title']}'")
 
-                    # Update song_info with filename after download
-                    song_info['filename'] = filename
-
-                    ctx = song_info['ctx']
-
-                    # Add song to playing queue
-                    with self.queue_lock:
-                        if not ctx.voice_client.is_playing() and self.currently_playing == None:
-                            self.bot.loop.call_soon_threadsafe(asyncio.run_coroutine_threadsafe, self.play_song(ctx, song_info), self.bot.loop)
-                        else:
-                            self.bot.loop.call_soon_threadsafe(self.song_queue.put_nowait, song_info)
-                    logger.info(f"Finished downloading '{song_info['title']}'")
-
-            except Exception as e:
-                logger.error(f"Error downloading {song_info['url']}: {e}")
-                # Consider how to handle download failures, e.g., retry or notify
-            finally:
-                self.download_queue.task_done()
+        except Exception as e:
+            logger.error(f"Error downloading {song_info['url']}: {e}")
 
     async def start_disconnect_timer(self, ctx):
         """Starts the disconnect timer."""
@@ -223,3 +198,7 @@ class MusicBot:
         if voice_client:
             return len(voice_client.channel.members) == 1
         return True  # No voice client means it's considered empty
+
+    def get_currently_playing(self):
+        """Returns information about the currently playing song or None."""
+        return self.currently_playing
