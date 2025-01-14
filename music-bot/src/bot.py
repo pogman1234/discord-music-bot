@@ -22,7 +22,7 @@ class MusicBot:
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
-            'logtostderr': True,
+            'logtostderr': False,  # Set to False
             'quiet': True,
             'no_warnings': True,
             'default_search': 'auto',
@@ -30,6 +30,9 @@ class MusicBot:
             'verbose': True,
             'debug_printtraffic': True,
             'no_cache_dir': True
+        }
+        self.ffmpeg_options = {
+            'options': '-vn -f s16le -ar 48000 -ac 2 -loglevel warning' 
         }
         self.ytdl = YoutubeDL(self.ytdl_options)
         self.queue = deque()
@@ -72,7 +75,16 @@ class MusicBot:
         self.current_song = self.queue.popleft()
         self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger, url=self.current_song['url'])
 
-        source = discord.FFmpegPCMAudio(self.current_song['filepath'])
+        # Log the filepath before creating FFmpegPCMAudio source
+        self._log(f"Attempting to play from: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
+
+        try:
+            source = discord.FFmpegPCMAudio(self.current_song['filepath'], **self.ffmpeg_options)
+        except discord.errors.ClientException as e:
+            self._log(f"Error creating FFmpegPCMAudio source: {e}", "ERROR", logger=self.discord_logger)
+            await ctx.send("An error occurred while preparing the song for playback.")
+            return
+        
         source.volume = self.volume
         self.current_song['source'] = source
 
@@ -93,10 +105,15 @@ class MusicBot:
                     self._log(f"Error playing next song: {e}", "ERROR", logger=self.discord_logger)
 
         if ctx.voice_client:
-            ctx.voice_client.play(
-                source,
-                after=lambda e: after_callback(e)
-            )
+            try:
+                ctx.voice_client.play(
+                    source,
+                    after=lambda e: after_callback(e)
+                )
+            except discord.errors.ClientException as e:
+                self._log(f"Error during playback: {e}", "ERROR", logger=self.discord_logger)
+                await ctx.send("An error occurred during playback.")
+                return
 
     def play_next_song_callback(self, ctx):
         self.loop.call_soon_threadsafe(self.cleanup_current_song)
