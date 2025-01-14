@@ -23,8 +23,8 @@ class MusicBot:
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'quiet': True,
-            'no_warnings': True,
+            'quiet': False,
+            'no_warnings': False,
             'default_search': 'auto',
             'source_address': '0.0.0.0',
             'verbose': True,
@@ -199,6 +199,8 @@ class MusicBot:
                 while not os.path.exists(filepath):
                     await asyncio.sleep(0.5)
 
+                await asyncio.sleep(5)
+                
                 song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
                 self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
                 return song_info  # Return the song_info
