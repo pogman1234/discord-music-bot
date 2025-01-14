@@ -32,7 +32,8 @@ class MusicBot:
             'no_cache_dir': True
         }
         self.ffmpeg_options = {
-            'options': '-vn -f s16le -ar 48000 -ac 2 -loglevel warning' 
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+            'options': '-vn'
         }
         self.ytdl = YoutubeDL(self.ytdl_options)
         self.queue = deque()
@@ -67,6 +68,8 @@ class MusicBot:
         self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO", logger=self.discord_logger)
 
     async def play_next_song(self, ctx):
+        self.ctx = ctx # Store context for use in after_callback
+
         if not self.queue:
             self.current_song = None
             self._log("Queue is empty, nothing to play.", "INFO", logger=self.discord_logger)
@@ -84,31 +87,28 @@ class MusicBot:
             self._log(f"Error creating FFmpegPCMAudio source: {e}", "ERROR", logger=self.discord_logger)
             await ctx.send("An error occurred while preparing the song for playback.")
             return
-        
+
         source.volume = self.volume
         self.current_song['source'] = source
 
         def after_callback(error):
             if error:
                 self._log(f"Playback error: {error}", "ERROR", logger=self.discord_logger)
-            
+
             # Schedule cleanup to run in the event loop
             self.loop.call_soon_threadsafe(self.cleanup_current_song)
 
-            # Check the queue and play the next song if available
+            # Schedule play_next_song to run in the event loop if there are songs in the queue
             if self.queue:
-                coro = self.play_next_song(ctx)
-                fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
-                try:
-                    fut.result()  # Wait for the coroutine to finish
-                except Exception as e:
-                    self._log(f"Error playing next song: {e}", "ERROR", logger=self.discord_logger)
+                coro = self.play_next_song(self.ctx)  # Pass the context
+                asyncio.run_coroutine_threadsafe(coro, self.loop)
+
 
         if ctx.voice_client:
             try:
                 ctx.voice_client.play(
                     source,
-                    after=lambda e: after_callback(e)
+                    after=lambda e: after_callback(e)  # Correctly pass 'e' to after_callback
                 )
             except discord.errors.ClientException as e:
                 self._log(f"Error during playback: {e}", "ERROR", logger=self.discord_logger)
@@ -123,11 +123,11 @@ class MusicBot:
     def cleanup_current_song(self):
         if self.current_song and os.path.exists(self.current_song['filepath']):
             try:
-                os.remove(self.current_song['filepath'])
+                # os.remove(self.current_song['filepath']) # No need to remove file
                 self._log(f"Removed file: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
             except Exception as e:
                 self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger, filepath=self.current_song['filepath'])
-            self.current_song = None
+        self.current_song = None
 
     async def add_to_queue(self, ctx, query):
         if 'playlist' in query.lower() or 'list' in query.lower():
@@ -177,54 +177,29 @@ class MusicBot:
 
     async def download_song(self, url):
         try:
-            self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
-            partial = functools.partial(self.ytdl.extract_info, url, download=True)
+            self._log(f"Checking if song from URL: {url} is already downloaded", "INFO", logger=self.ytdl_logger)
+            partial = functools.partial(self.ytdl.extract_info, url, download=False)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
             filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
 
-            while not os.path.exists(filepath):
-                await asyncio.sleep(0.5)
+            if os.path.exists(filepath):
+                self._log(f"Song already downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
+                song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
+                return song_info
+            else:
+                self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
+                partial = functools.partial(self.ytdl.extract_info, url, download=True)
+                info = await self.loop.run_in_executor(self.thread_pool, partial)
 
-            song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
-            self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-            return song_info
+                filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
+
+                while not os.path.exists(filepath):
+                    await asyncio.sleep(0.5)
+
+                song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
+                self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
+                return song_info  # Return the song_info
         except Exception as e:
             self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
             return None
-
-    async def extract_playlist_info(self, url):
-        try:
-            self._log(f"Extracting playlist info from URL: {url}", "INFO", logger=self.ytdl_logger)
-            partial = functools.partial(self.ytdl.extract_info, url, download=False)
-            info = await self.loop.run_in_executor(self.thread_pool, partial)
-            return info
-        except Exception as e:
-            self._log(f"Error extracting playlist info: {e}", "ERROR", logger=self.ytdl_logger, url=url)
-            return None
-
-    async def get_stream_source(self, url):
-        try:
-            partial = functools.partial(self.ytdl.extract_info, url, download=False)
-            data = await self.loop.run_in_executor(None, partial)
-            filename = data['url'] if 'url' in data else self.ytdl.prepare_filename(data)
-            return discord.FFmpegPCMAudio(filename)
-        except Exception as e:
-            self._log(f"Error getting stream source: {e}", "ERROR", logger=self.discord_logger, url=url)
-            return None
-
-    def is_playing(self, ctx):
-        return ctx.voice_client and ctx.voice_client.is_playing()
-
-    def get_currently_playing(self):
-        if self.current_song:
-            return self.current_song['title']
-        return None
-
-    def get_volume(self):
-        return self.volume
-
-    def set_volume(self, volume):
-        self.volume = volume
-        if self.current_song and self.current_song.get('source'):
-            self.current_song['source'].volume = volume
