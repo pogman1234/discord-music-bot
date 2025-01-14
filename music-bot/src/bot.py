@@ -203,3 +203,7 @@ class MusicBot:
             self.disconnect_timer.cancel()  # Cancel any existing timer
 
         self.disconnect_timer = self
+    
+    def get_currently_playing(self):
+        """Returns information about the currently playing song or None."""
+        return self.currently_playing
