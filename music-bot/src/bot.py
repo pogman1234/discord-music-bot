@@ -8,13 +8,14 @@ import functools
 import json
 import time
 from googleapiclient.discovery import build
+import os
 
-class MusicBot:  # Remove commands.Bot inheritance
-    def __init__(self, bot, youtube):  # Take bot and youtube as arguments
-        self.bot = bot  # Store the commands.Bot instance
+class MusicBot:
+    def __init__(self, bot, youtube):
+        self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+            'outtmpl': 'music/%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Save to /music folder
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
@@ -31,7 +32,11 @@ class MusicBot:  # Remove commands.Bot inheritance
         self.loop = asyncio.get_event_loop()
         self.thread_pool = ThreadPoolExecutor()
         self.volume = 0.5
-        self.youtube = youtube  # Use the passed youtube client
+        self.youtube = youtube
+        self.download_dir = "music"
+
+        # Create music directory if it doesn't exist
+        os.makedirs(self.download_dir, exist_ok=True)
 
     def _log(self, message, severity="INFO", **kwargs):
         entry = {
@@ -53,7 +58,9 @@ class MusicBot:  # Remove commands.Bot inheritance
 
         self.current_song = self.queue.popleft()
         self._log(f"Playing next song: {self.current_song['title']}", "INFO", url=self.current_song['url'])
-        source = await self.get_stream_source(self.current_song['url'])
+
+        # Play from the downloaded file
+        source = discord.FFmpegPCMAudio(self.current_song['filepath'])
         source.volume = self.volume
         self.current_song['source'] = source
 
@@ -72,14 +79,14 @@ class MusicBot:  # Remove commands.Bot inheritance
             info = await self.extract_playlist_info(query)
             if 'entries' in info:
                 for entry in info['entries']:
-                    song_info = await self.extract_song_info_with_ytdlp(entry['url'])
+                    song_info = await self.download_song(entry['url'])
                     if song_info:
                         self.queue.append(song_info)
                 self._log(f"Added {len(info['entries'])} songs from playlist to the queue.", "INFO")
             else:
                 self._log("No entries found in playlist", "WARNING")
         else:
-            song_info = await self.search_and_extract_song_info(query)
+            song_info = await self.search_and_download_song(query)
             if song_info:
                 self.queue.append(song_info)
                 self._log(f"Added song to queue: {song_info['title']}", "INFO", url=song_info['url'])
@@ -88,9 +95,10 @@ class MusicBot:  # Remove commands.Bot inheritance
             await self.play_next_song(ctx)
 
         return song_info
-
-    async def search_and_extract_song_info(self, query):
+    
+    async def search_and_download_song(self, query):
         try:
+            # Use YouTube API to search for the video
             search_response = self.youtube.search().list(
                 q=query,
                 part="snippet",
@@ -104,20 +112,31 @@ class MusicBot:  # Remove commands.Bot inheritance
 
             video_id = search_response["items"][0]["id"]["videoId"]
             video_url = f"https://www.youtube.com/watch?v={video_id}"
-            return await self.extract_song_info_with_ytdlp(video_url)
+
+            # Download the song using yt_dlp
+            return await self.download_song(video_url)
 
         except Exception as e:
-            self._log(f"Error searching with YouTube API: {e}", "ERROR", query=query)
+            self._log(f"Error searching with YouTube API or downloading song: {e}", "ERROR", query=query)
             return None
 
-    async def extract_song_info_with_ytdlp(self, url):
+    async def download_song(self, url):
         try:
-            partial = functools.partial(self.ytdl.extract_info, url, download=False)
+            # Extract song info with yt_dlp
+            partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
-            song_info = {'title': info['title'], 'url': info['url']}
+
+            # Get the filename of the downloaded file
+            filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
+
+            # Ensure the file has been downloaded before adding to the queue
+            while not os.path.exists(filepath):
+                await asyncio.sleep(1)  # Wait for 1 second
+
+            song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
             return song_info
         except Exception as e:
-            self._log(f"Error extracting song info with yt_dlp: {e}", "ERROR", url=url)
+            self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", url=url)
             return None
 
     async def extract_playlist_info(self, url):
@@ -146,7 +165,7 @@ class MusicBot:  # Remove commands.Bot inheritance
         if self.current_song:
             return self.current_song['title']
         return None
-    
+
     def get_volume(self):
         return self.volume
 

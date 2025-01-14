@@ -32,14 +32,22 @@ class Play(commands.Cog):
 
         # Add to queue
         song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
-        
+
         if song_info:
             if not self.is_playing(ctx):
                 await interaction.followup.send(f"Playing [{song_info['title']}](<{song_info['url']}>)")
             else:
                 # Send "Added to queue" message with clickable title
                 embed = discord.Embed(title="Added to Queue", description=f"[{song_info['title']}]({song_info['url']})", color=discord.Color.green())
-                embed.set_thumbnail(url=song_info.get('thumbnail'))
+
+                # Get the video thumbnail (you may need to adjust how you retrieve this)
+                try:
+                    video_id = song_info['url'].split("watch?v=")[1]
+                    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/0.jpg"
+                    embed.set_thumbnail(url=thumbnail_url)
+                except Exception as e:
+                    logger.error(f"Error getting thumbnail: {e}")
+
                 await interaction.followup.send(embed=embed)
 
     def is_playing(self, ctx):
