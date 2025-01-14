@@ -163,12 +163,16 @@ class MusicBot:
                 maxResults=1
             ).execute()
 
+            self._log(f"YouTube API search response: {search_response}", "DEBUG", logger=self.ytdl_logger)
+
             if not search_response.get("items"):
                 self._log(f"No results found for query: {query}", "WARNING", logger=self.discord_logger)
                 return None
 
             video_id = search_response["items"][0]["id"]["videoId"]
             video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+            self._log(f"Found video URL: {video_url}", "INFO", logger=self.discord_logger)
 
             return await self.download_song(video_url)
 
@@ -182,28 +186,36 @@ class MusicBot:
             partial = functools.partial(self.ytdl.extract_info, url, download=False)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
+            self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)  # Log this immediately
+
             filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
 
             if os.path.exists(filepath):
                 self._log(f"Song already downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
                 song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
-                return song_info
+                return song_info  # Return early if already downloaded
             else:
                 self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
                 partial = functools.partial(self.ytdl.extract_info, url, download=True)
                 info = await self.loop.run_in_executor(self.thread_pool, partial)
-                self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
 
                 filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
 
                 while not os.path.exists(filepath):
+                    self._log(f"Waiting for file to be downloaded: {filepath}", "DEBUG", logger=self.ytdl_logger)
                     await asyncio.sleep(0.5)
 
+                # Wait for FFmpeg to finish conversion and file to be released
+                self._log(f"Waiting for FFmpeg to finish processing: {filepath}", "DEBUG", logger=self.ytdl_logger)
                 await asyncio.sleep(5)
-                
+
                 song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
+                self._log(f"Song info before return: {song_info}", "DEBUG", logger=self.ytdl_logger)
                 self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-                return song_info  # Return the song_info
+                return song_info
         except Exception as e:
             self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
-            return None
+            # Add more specific exception handling here, if possible
+            if 'info' in locals() and info:
+                self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
+            return None  # Ensure None is returned on error
