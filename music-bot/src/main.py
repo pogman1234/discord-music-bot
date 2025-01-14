@@ -92,9 +92,7 @@ async def on_ready():
 
     print(f"Bot is ready. Logged in as {bot.user}")
     print("------")
-
-    # Pass youtube client to MusicBot
-    bot.music_bot = MusicBot(bot, youtube)
+    
 
 # --- Command: /ping ---
 @bot.tree.command(name="ping", description="Replies with Pong!")
@@ -114,6 +112,7 @@ async def load_cogs():
                 logger.error(f"Failed to load cog {extension}: {e}", exc_info=True, extra={'cog': extension})
 
 async def start_bot():
+    bot.music_bot = MusicBot(bot, youtube)
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
