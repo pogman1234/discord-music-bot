@@ -208,7 +208,7 @@ class MusicBot:
 
             self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
 
-            filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
+            filepath = os.path.join(self.ytdl.prepare_filename(info))
 
             # Wait for file to be created with a longer interval and timeout
             total_wait_time = 0
