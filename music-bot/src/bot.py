@@ -27,7 +27,7 @@ class MusicBot:
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
-            'logtostderr': False,  # Set to False
+            'logtostderr': False,
             'quiet': True,
             'no_warnings': True,
             'default_search': 'auto',
