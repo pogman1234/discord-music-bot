@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -5,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import logging
 import asyncio
-from bot import MusicBot
+from bot import MusicBot  # Import MusicBot
 from googleapiclient.discovery import build
 import threading
 import json
@@ -63,7 +64,7 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=inten
 
 # --- YouTube Data API Setup ---
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)  # Create youtube client here
 
 # --- Flask Setup for Health Check and Frontend ---
 app = Flask(__name__, template_folder='/app/templates')
@@ -92,6 +93,7 @@ async def on_ready():
     print(f"Bot is ready. Logged in as {bot.user}")
     print("------")
 
+    # Pass youtube client to MusicBot
     bot.music_bot = MusicBot(bot, youtube)
 
 # --- Command: /ping ---
