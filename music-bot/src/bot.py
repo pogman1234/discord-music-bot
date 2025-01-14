@@ -16,6 +16,11 @@ class MusicBot:
     def __init__(self, bot, youtube):
         self.bot = bot
         self.ytdl_options = {
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
             'format': 'bestaudio/best',
             'outtmpl': 'music/%(extractor)s-%(id)s-%(title)s.%(ext)s',
             'restrictfilenames': True,
