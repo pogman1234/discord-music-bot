@@ -198,7 +198,7 @@ class MusicBot:
             self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
 
             # Execute ls -lrt in the music directory
-            music_directory = os.path.join(current_directory, self.download_dir)
+            music_directory = os.path.join(current_directory)
             self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
             process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
             self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
