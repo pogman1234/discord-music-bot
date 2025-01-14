@@ -1,6 +1,6 @@
 import asyncio
 import discord
-import subprocess  # Import the subprocess module
+import subprocess
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 from collections import deque
@@ -17,7 +17,7 @@ class MusicBot:
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': 'music/%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Corrected outtmpl
+            'outtmpl': os.path.join('music', '%(extractor)s-%(id)s-%(title)s.%(ext)s'),  # Corrected outtmpl
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
@@ -198,7 +198,7 @@ class MusicBot:
             self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
 
             # Execute ls -lrt in the music directory
-            music_directory = os.path.join(current_directory)
+            music_directory = self.download_dir  # Use self.download_dir directly
             self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
             process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
             self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
@@ -246,7 +246,7 @@ class MusicBot:
             if 'info' in locals() and info:
                 self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
             return None  # Ensure None is returned on error
-        
+    
     def is_playing(self, ctx):
         """Checks if the bot is currently playing audio in the guild."""
         voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
