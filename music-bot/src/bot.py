@@ -9,9 +9,9 @@ import json
 import time
 from googleapiclient.discovery import build
 
-class MusicBot(commands.Bot):
-    def __init__(self, command_prefix, intents, youtube_api_key):
-        super().__init__(command_prefix=command_prefix, intents=intents)
+class MusicBot:  # Remove commands.Bot inheritance
+    def __init__(self, bot, youtube):  # Take bot and youtube as arguments
+        self.bot = bot  # Store the commands.Bot instance
         self.ytdl_options = {
             'format': 'bestaudio/best',
             'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
@@ -31,7 +31,7 @@ class MusicBot(commands.Bot):
         self.loop = asyncio.get_event_loop()
         self.thread_pool = ThreadPoolExecutor()
         self.volume = 0.5
-        self.youtube = build("youtube", "v3", developerKey=youtube_api_key)
+        self.youtube = youtube  # Use the passed youtube client
 
     def _log(self, message, severity="INFO", **kwargs):
         entry = {
@@ -43,7 +43,7 @@ class MusicBot(commands.Bot):
         print(json.dumps(entry))
 
     async def on_ready(self):
-        self._log(f"Logged in as {self.user.name} ({self.user.id})", "INFO")
+        self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO")
 
     async def play_next_song(self, ctx):
         if not self.queue:
