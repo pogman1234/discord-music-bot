@@ -16,11 +16,6 @@ class MusicBot:
     def __init__(self, bot, youtube):
         self.bot = bot
         self.ytdl_options = {
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
             'format': 'bestaudio/best',
             'outtmpl': 'music/%(extractor)s-%(id)s-%(title)s.%(ext)s',
             'restrictfilenames': True,
@@ -148,6 +143,7 @@ class MusicBot:
                 self._log("No entries found in playlist", "WARNING", logger=self.discord_logger)
         else:
             song_info = await self.search_and_download_song(query)
+            self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger) # Log song_info
             if song_info:
                 self.queue.append(song_info)
                 self._log(f"Added song to queue: {song_info['title']}", "INFO", logger=self.discord_logger, url=song_info['url'])
@@ -196,6 +192,7 @@ class MusicBot:
                 self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
                 partial = functools.partial(self.ytdl.extract_info, url, download=True)
                 info = await self.loop.run_in_executor(self.thread_pool, partial)
+                self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
 
                 filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
 
