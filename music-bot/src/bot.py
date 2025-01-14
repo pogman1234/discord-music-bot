@@ -77,16 +77,25 @@ class MusicBot:
         self.current_song['source'] = source
 
         def after_callback(error):
-          if error:
-              self._log(f"Error in play_next_song after_callback: {error}", "ERROR", logger=self.discord_logger)
-          self.loop.call_soon_threadsafe(self.cleanup_current_song)
-          if self.queue:
-              self.loop.run_in_executor(None, asyncio.run, self.play_next_song(ctx))
+            if error:
+                self._log(f"Playback error: {error}", "ERROR", logger=self.discord_logger)
+            
+            # Schedule cleanup to run in the event loop
+            self.loop.call_soon_threadsafe(self.cleanup_current_song)
+
+            # Check the queue and play the next song if available
+            if self.queue:
+                coro = self.play_next_song(ctx)
+                fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
+                try:
+                    fut.result()  # Wait for the coroutine to finish
+                except Exception as e:
+                    self._log(f"Error playing next song: {e}", "ERROR", logger=self.discord_logger)
 
         if ctx.voice_client:
             ctx.voice_client.play(
                 source,
-                after=after_callback
+                after=lambda e: after_callback(e)
             )
 
     def play_next_song_callback(self, ctx):
