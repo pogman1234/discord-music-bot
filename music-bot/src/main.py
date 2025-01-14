@@ -43,16 +43,20 @@ class GoogleCloudLogFormatter(logging.Formatter):
 # Configure logging
 logger = logging.getLogger('discord')
 logger.setLevel(logging.INFO)
+ytdl_logger = logging.getLogger('ytdl')
+ytdl_logger.setLevel(logging.DEBUG)
 
 # Log to a file
 file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
 file_handler.setFormatter(GoogleCloudLogFormatter())
 logger.addHandler(file_handler)
+ytdl_logger.addHandler(file_handler)
 
 # Log to console
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(GoogleCloudLogFormatter())
 logger.addHandler(console_handler)
+ytdl_logger.addHandler(console_handler)
 
 # --- Intents Setup ---
 intents = discord.Intents.default()
