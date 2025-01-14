@@ -32,7 +32,7 @@ class Play(commands.Cog):
 
         # Add to queue
         song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
-
+        
         if song_info:
             if not self.is_playing(ctx):
                 await interaction.followup.send(f"Playing [{song_info['title']}](<{song_info['url']}>)")
