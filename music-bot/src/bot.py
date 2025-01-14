@@ -1,6 +1,6 @@
 import asyncio
 import discord
-import threading
+import subprocess  # Import the subprocess module
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 from collections import deque
@@ -17,17 +17,17 @@ class MusicBot:
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Corrected outtmpl
+            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'quiet': False,  # Enabled logging from yt_dlp
-            'no_warnings': False,  # Enabled warnings from yt_dlp
+            'quiet': False,
+            'no_warnings': False,
             'default_search': 'auto',
             'source_address': '0.0.0.0',
-            'verbose': True,  # Enabled verbose output from yt_dlp
+            'verbose': True,
             'debug_printtraffic': True,
             'no_cache_dir': True
         }
@@ -187,6 +187,22 @@ class MusicBot:
     async def download_song(self, url):
         try:
             self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
+
+            # Get the current working directory
+            current_directory = os.getcwd()
+            self._log(f"Current working directory: {current_directory}", "DEBUG", logger=self.ytdl_logger)
+
+            # Execute ls -lrt in the current directory
+            self._log(f"Executing ls -lrt in {current_directory}", "DEBUG", logger=self.ytdl_logger)
+            process = subprocess.run(['ls', '-lrt', current_directory], capture_output=True, text=True)
+            self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
+
+            # Execute ls -lrt in the music directory
+            music_directory = os.path.join(current_directory, self.download_dir)
+            self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
+            process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
+            self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
+
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
