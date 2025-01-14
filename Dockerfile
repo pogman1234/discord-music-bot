@@ -2,15 +2,13 @@
 FROM python:3.9-slim
 
 # Create a new user (e.g., botuser)
-RUN useradd -m -s /bin/bash botuser
+RUN useradd -m -s /bin/bash -u 1000 -g 1000 botuser
 
 # Create the music directory and set ownership/permissions
-RUN mkdir -p /app/music && \
-    chown botuser:botuser /app/music && \
-    chmod 755 /app/music
+RUN mkdir -p /app/music
 
-# Switch to the new user
-USER botuser
+RUN chown -R botuser:botuser /app
+
 
 # Set the working directory in the container
 WORKDIR /app
@@ -30,6 +28,9 @@ EXPOSE 8080
 # Define environment variable for the bot token (set this when running the container)
 ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
 ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+
+# Switch to the new user
+USER botuser
 
 # Run main.py when the container launches
 CMD ["python", "music-bot/src/main.py"]
