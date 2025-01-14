@@ -3,67 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Discord Music Bot</title>
+    <title>Poggy's Music Bot</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
+            background-color: #222; /* Dark background */
+            color: #eee; /* Light text */
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
-            color: #333;
-            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
         }
-        header {
-            background-color: #333;
-            color: #fff;
-            padding: 10px 0;
+        h1 {
+            color: #eee; /* Light text */
+            margin-bottom: 20px;
         }
-        main {
-            padding: 20px;
-        }
-        footer {
-            background-color: #333;
-            color: #fff;
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-            padding: 10px 0;
+        p {
+            font-size: 18px;
+            margin: 10px 0;
         }
         .container {
-            max-width: 800px;
-            margin: auto;
-            background: #fff;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            background-color: #333; /* Slightly lighter container background */
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
         }
-        img {
-            max-width: 100%;
-            height: auto;
-            margin-top: 15px;
+        .song-info {
+            margin-top: 20px;
+            color: #eee; /* Light text for song info */
+        }
+        .song-info h2 {
+            color: #eee; /* Light text */
+            margin-bottom: 10px;
+        }
+        .song-info p {
+            margin: 5px 0;
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>Discord Music Bot</h1>
-    </header>
-    <main>
-        <div class="container">
-            <section id="now-playing">
-                {% if song %}
-                <h2>Now Playing:</h2>
-                <p>{{ song.title }}</p>
-                <img src="{{ song.thumbnail }}" alt="Song Thumbnail">
-                <p><a href="{{ song.url }}" target="_blank">Watch on YouTube</a></p>
-                {% else %}
-                <p>No song is currently playing.</p>
-                {% endif %}
-            </section>
-                    </div>
-    </main>
-    <footer>
-        <p>&copy; 2025 pogman. All rights reserved.</p>
-    </footer>
+    <div class="container">
+        <h1>Poggy's Music Bot</h1>
+        <p>A Discord bot that plays music from YouTube!</p>
+        
+        <div class="song-info">
+            <h2>Currently Playing:</h2>
+            {% if song %}
+                <p>{{ song }}</p>
+            {% else %}
+                <p>Nothing at the moment.</p>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>

@@ -247,6 +247,12 @@ class MusicBot:
                 self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
             return None  # Ensure None is returned on error
     
+    def get_currently_playing(self):
+        """Returns the title of the currently playing song or None if not playing."""
+        if self.current_song:
+            return self.current_song['title']
+        return None
+    
     def is_playing(self, ctx):
         """Checks if the bot is currently playing audio in the guild."""
         voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
