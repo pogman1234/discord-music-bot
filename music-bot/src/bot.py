@@ -17,7 +17,7 @@ class MusicBot:
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Corrected outtmpl
+            'outtmpl': 'music/%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Corrected outtmpl
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
@@ -246,3 +246,8 @@ class MusicBot:
             if 'info' in locals() and info:
                 self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
             return None  # Ensure None is returned on error
+        
+    def is_playing(self, ctx):
+        """Checks if the bot is currently playing audio in the guild."""
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+        return voice_client and voice_client.is_playing()
