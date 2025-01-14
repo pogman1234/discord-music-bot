@@ -1,5 +1,6 @@
 import asyncio
 import discord
+import threading
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 from collections import deque
@@ -34,7 +35,7 @@ class MusicBot:
         self.queue = deque()
         self.current_song = None
         self.loop = asyncio.get_event_loop()
-        self.thread_pool = ThreadPoolExecutor()
+        self.thread_pool = ThreadPoolExecutor(max_workers=3)
         self.volume = 0.5
         self.youtube = youtube
         self.download_dir = "music"
@@ -75,15 +76,23 @@ class MusicBot:
         source.volume = self.volume
         self.current_song['source'] = source
 
+        def after_callback(error):
+          if error:
+              self._log(f"Error in play_next_song after_callback: {error}", "ERROR", logger=self.discord_logger)
+          self.loop.call_soon_threadsafe(self.cleanup_current_song)
+          if self.queue:
+              self.loop.run_in_executor(None, asyncio.run, self.play_next_song(ctx))
+
         if ctx.voice_client:
             ctx.voice_client.play(
                 source,
-                after=lambda e: self.loop.call_soon_threadsafe(self.play_next_song_callback, ctx)
+                after=after_callback
             )
 
     def play_next_song_callback(self, ctx):
         self.loop.call_soon_threadsafe(self.cleanup_current_song)
-        asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.loop)
+        if self.queue:
+            asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.loop)
 
     def cleanup_current_song(self):
         if self.current_song and os.path.exists(self.current_song['filepath']):
