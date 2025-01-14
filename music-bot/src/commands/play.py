@@ -38,14 +38,13 @@ class Play(commands.Cog):
 
         if song_info:
             logger.info(f"Song info: {song_info}")
-            # Check if the filepath key exists and log the path
             if 'filepath' in song_info:
                 logger.info(f"Attempting to play from: {song_info['filepath']}")
             else:
                 logger.error("Filepath not found in song_info")
                 await interaction.followup.send("Error: Could not find the audio file.")
                 return
-            
+
             def after_playing(error):
                 if error:
                     logger.error(f'Error during playback: {error}')
@@ -75,6 +74,9 @@ class Play(commands.Cog):
             except Exception as e:
                 logger.error(f"Error during playback: {e}")
                 await interaction.followup.send("An error occurred during playback.")
+        else:
+            logger.error("Error: song_info is None")
+            await interaction.followup.send("An error occurred while processing the song.")
 
     def is_playing(self, ctx):
         voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
