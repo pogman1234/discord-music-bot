@@ -17,22 +17,21 @@ class MusicBot:
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Corrected outtmpl
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'quiet': False,
-            'no_warnings': False,
+            'quiet': False,  # Enabled logging from yt_dlp
+            'no_warnings': False,  # Enabled warnings from yt_dlp
             'default_search': 'auto',
             'source_address': '0.0.0.0',
-            'verbose': True,
+            'verbose': True,  # Enabled verbose output from yt_dlp
             'debug_printtraffic': True,
             'no_cache_dir': True
         }
         self.ffmpeg_options = {
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn'
         }
         self.ytdl = YoutubeDL(self.ytdl_options)
@@ -68,7 +67,7 @@ class MusicBot:
         self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO", logger=self.discord_logger)
 
     async def play_next_song(self, ctx):
-        self.ctx = ctx # Store context for use in after_callback
+        self.ctx = ctx  # Store context for use in after_callback
 
         if not self.queue:
             self.current_song = None
@@ -76,7 +75,8 @@ class MusicBot:
             return
 
         self.current_song = self.queue.popleft()
-        self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger, url=self.current_song['url'])
+        self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger,
+                  url=self.current_song['url'])
 
         # Log the filepath before creating FFmpegPCMAudio source
         self._log(f"Attempting to play from: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
@@ -103,7 +103,6 @@ class MusicBot:
                 coro = self.play_next_song(self.ctx)  # Pass the context
                 asyncio.run_coroutine_threadsafe(coro, self.loop)
 
-
         if ctx.voice_client:
             try:
                 ctx.voice_client.play(
@@ -126,27 +125,31 @@ class MusicBot:
                 # os.remove(self.current_song['filepath']) # No need to remove file
                 self._log(f"Removed file: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
             except Exception as e:
-                self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger, filepath=self.current_song['filepath'])
+                self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger,
+                          filepath=self.current_song['filepath'])
         self.current_song = None
 
     async def add_to_queue(self, ctx, query):
         if 'playlist' in query.lower() or 'list' in query.lower():
-            self._log(f"Playlists are not supported with YouTube API search, using yt_dlp instead: {query}", "WARNING", logger=self.discord_logger)
+            self._log(f"Playlists are not supported with YouTube API search, using yt_dlp instead: {query}",
+                      "WARNING", logger=self.discord_logger)
             info = await self.extract_playlist_info(query)
             if 'entries' in info:
                 for entry in info['entries']:
                     song_info = await self.download_song(entry['url'])
                     if song_info:
                         self.queue.append(song_info)
-                self._log(f"Added {len(info['entries'])} songs from playlist to the queue.", "INFO", logger=self.discord_logger)
+                self._log(f"Added {len(info['entries'])} songs from playlist to the queue.", "INFO",
+                          logger=self.discord_logger)
             else:
                 self._log("No entries found in playlist", "WARNING", logger=self.discord_logger)
         else:
             song_info = await self.search_and_download_song(query)
-            self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger) # Log song_info
+            self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger)  # Log song_info
             if song_info:
                 self.queue.append(song_info)
-                self._log(f"Added song to queue: {song_info['title']}", "INFO", logger=self.discord_logger, url=song_info['url'])
+                self._log(f"Added song to queue: {song_info['title']}", "INFO", logger=self.discord_logger,
+                          url=song_info['url'])
 
         if not self.is_playing(ctx) and not self.current_song:
             await self.play_next_song(ctx)
@@ -177,42 +180,38 @@ class MusicBot:
             return await self.download_song(video_url)
 
         except Exception as e:
-            self._log(f"Error searching with YouTube API or downloading song: {e}", "ERROR", logger=self.discord_logger, query=query)
+            self._log(f"Error searching with YouTube API or downloading song: {e}", "ERROR",
+                      logger=self.discord_logger, query=query)
             return None
 
     async def download_song(self, url):
         try:
-            self._log(f"Checking if song from URL: {url} is already downloaded", "INFO", logger=self.ytdl_logger)
-            partial = functools.partial(self.ytdl.extract_info, url, download=False)
+            self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
+            partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
-            self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)  # Log this immediately
+            self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
 
             filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
 
+            # Wait for file to be created with a longer interval and timeout
+            total_wait_time = 0
+            while not os.path.exists(filepath) and total_wait_time < 60:  # Timeout after 60 seconds
+                self._log(f"Waiting for file to be downloaded: {filepath} (waited {total_wait_time} seconds)", "DEBUG",
+                          logger=self.ytdl_logger)
+                await asyncio.sleep(5)  # Wait for 5 seconds
+                total_wait_time += 5
+
             if os.path.exists(filepath):
-                self._log(f"Song already downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-                song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
-                return song_info  # Return early if already downloaded
-            else:
-                self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
-                partial = functools.partial(self.ytdl.extract_info, url, download=True)
-                info = await self.loop.run_in_executor(self.thread_pool, partial)
-
-                filepath = os.path.join(self.download_dir, self.ytdl.prepare_filename(info))
-
-                while not os.path.exists(filepath):
-                    self._log(f"Waiting for file to be downloaded: {filepath}", "DEBUG", logger=self.ytdl_logger)
-                    await asyncio.sleep(0.5)
-
-                # Wait for FFmpeg to finish conversion and file to be released
-                self._log(f"Waiting for FFmpeg to finish processing: {filepath}", "DEBUG", logger=self.ytdl_logger)
-                await asyncio.sleep(5)
-
                 song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
                 self._log(f"Song info before return: {song_info}", "DEBUG", logger=self.ytdl_logger)
                 self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
                 return song_info
+            else:
+                self._log(f"File did not download after waiting for 60 seconds: {filepath}", "ERROR",
+                          logger=self.ytdl_logger)
+                return None
+
         except Exception as e:
             self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
             # Add more specific exception handling here, if possible
