@@ -17,17 +17,17 @@ class MusicBot:
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',  # Corrected outtmpl
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'quiet': False,
-            'no_warnings': False,
+            'quiet': False,  # Enabled logging from yt_dlp
+            'no_warnings': False,  # Enabled warnings from yt_dlp
             'default_search': 'auto',
             'source_address': '0.0.0.0',
-            'verbose': True,
+            'verbose': True,  # Enabled verbose output from yt_dlp
             'debug_printtraffic': True,
             'no_cache_dir': True
         }
@@ -215,6 +215,18 @@ class MusicBot:
             while not os.path.exists(filepath) and total_wait_time < 60:  # Timeout after 60 seconds
                 self._log(f"Waiting for file to be downloaded: {filepath} (waited {total_wait_time} seconds)", "DEBUG",
                           logger=self.ytdl_logger)
+                
+                # Execute ls -lrt in the music directory
+                self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
+                process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
+                self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
+
+                # Execute ls -lrt in the parent directory of music directory
+                parent_directory = os.path.dirname(music_directory)
+                self._log(f"Executing ls -lrt in {parent_directory}", "DEBUG", logger=self.ytdl_logger)
+                process = subprocess.run(['ls', '-lrt', parent_directory], capture_output=True, text=True)
+                self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
+
                 await asyncio.sleep(5)  # Wait for 5 seconds
                 total_wait_time += 5
 
