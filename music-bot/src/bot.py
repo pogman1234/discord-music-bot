@@ -26,13 +26,15 @@ class MusicBot:
             'no_warnings': True,
             'default_search': 'auto',
             'source_address': '0.0.0.0',
-            'verbose': True  # Enable verbose yt_dlp logging
+            'verbose': True,
+            'debug_printtraffic': True,
+            'no_cache_dir': True
         }
         self.ytdl = YoutubeDL(self.ytdl_options)
         self.queue = deque()
         self.current_song = None
         self.loop = asyncio.get_event_loop()
-        self.thread_pool = ThreadPoolExecutor(max_workers=2)  # Reduced worker count
+        self.thread_pool = ThreadPoolExecutor()
         self.volume = 0.5
         self.youtube = youtube
         self.download_dir = "music"
