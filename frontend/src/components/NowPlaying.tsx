@@ -1,9 +1,10 @@
-// frontend/src/components/NowPlaying.js
 import React, { useState, useEffect } from 'react';
 
-const NowPlaying = () => {
-  const [nowPlaying, setNowPlaying] = useState(null);
-  const [error, setError] = useState(null);
+interface NowPlayingProps {}
+
+const NowPlaying: React.FC<NowPlayingProps> = () => {
+  const [nowPlaying, setNowPlaying] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -12,7 +13,7 @@ const NowPlaying = () => {
         const data = await response.json();
 
         if (response.ok) {
-          setNowPlaying(data.title); // Assuming the API returns { "title": "..." }
+          setNowPlaying(data.title);
           setError(null);
         } else {
           setError(data.message || 'Error fetching now playing');
@@ -24,13 +25,9 @@ const NowPlaying = () => {
       }
     };
 
-    // Fetch data immediately on component mount
     fetchData();
-
-    // Set up polling (fetch data every 5 seconds)
     const intervalId = setInterval(fetchData, 5000);
 
-    // Clean up interval on component unmount
     return () => clearInterval(intervalId);
   }, []);
 

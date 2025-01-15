@@ -1,14 +1,13 @@
-// frontend/src/App.js
+// frontend/src/App.tsx
 import React from 'react';
 import NowPlaying from './components/NowPlaying';
-import './App.css'; // If you have any CSS
+import './App.css';
 
-const App = () => {
+const App: React.FC = () => {
   return (
     <div className="App">
       <h1>Discord Music Bot</h1>
       <NowPlaying />
-      {/* Other components can be added here later */}
     </div>
   );
 };
