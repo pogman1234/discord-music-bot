@@ -45,7 +45,7 @@ class MusicBot:
 
         # Set up loggers
         self.ytdl_logger = logging.getLogger('ytdl')
-        self.ytdl_logger.setLevel(logging.DEBUG)
+        self.ytdl_logger.setLevel(logging.INFO)
         self.discord_logger = logging.getLogger('discord')
         self.discord_logger.setLevel(logging.INFO)
 
@@ -65,6 +65,32 @@ class MusicBot:
 
     async def on_ready(self):
         self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO", logger=self.discord_logger)
+    
+    def get_currently_playing(self):
+        """Returns the title of the currently playing song or None if not playing."""
+        if self.current_song:
+            return self.current_song['title']
+        return None
+    
+    def is_playing(self, ctx):
+        """Checks if the bot is currently playing audio in the guild."""
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+        return voice_client and voice_client.is_playing()
+    
+    def play_next_song_callback(self, ctx):
+        self.loop.call_soon_threadsafe(self.cleanup_current_song)
+        if self.queue:
+            asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.loop)
+
+    def cleanup_current_song(self):
+        if self.current_song and os.path.exists(self.current_song['filepath']):
+            try:
+                os.remove(self.current_song['filepath'])
+                self._log(f"Removed file: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
+            except Exception as e:
+                self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger,
+                          filepath=self.current_song['filepath'])
+        self.current_song = None
 
     async def play_next_song(self, ctx):
         self.ctx = ctx  # Store context for use in after_callback
@@ -113,21 +139,6 @@ class MusicBot:
                 self._log(f"Error during playback: {e}", "ERROR", logger=self.discord_logger)
                 await ctx.send("An error occurred during playback.")
                 return
-
-    def play_next_song_callback(self, ctx):
-        self.loop.call_soon_threadsafe(self.cleanup_current_song)
-        if self.queue:
-            asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.loop)
-
-    def cleanup_current_song(self):
-        if self.current_song and os.path.exists(self.current_song['filepath']):
-            try:
-                # os.remove(self.current_song['filepath']) # No need to remove file
-                self._log(f"Removed file: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
-            except Exception as e:
-                self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger,
-                          filepath=self.current_song['filepath'])
-        self.current_song = None
 
     async def add_to_queue(self, ctx, query):
         if 'playlist' in query.lower() or 'list' in query.lower():
@@ -192,17 +203,6 @@ class MusicBot:
             current_directory = os.getcwd()
             self._log(f"Current working directory: {current_directory}", "DEBUG", logger=self.ytdl_logger)
 
-            # Execute ls -lrt in the current directory
-            self._log(f"Executing ls -lrt in {current_directory}", "DEBUG", logger=self.ytdl_logger)
-            process = subprocess.run(['ls', '-lrt', current_directory], capture_output=True, text=True)
-            self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
-            # Execute ls -lrt in the music directory
-            music_directory = self.download_dir  # Use self.download_dir directly
-            self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
-            process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
-            self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
@@ -215,18 +215,6 @@ class MusicBot:
             while not os.path.exists(filepath) and total_wait_time < 60:  # Timeout after 60 seconds
                 self._log(f"Waiting for file to be downloaded: {filepath} (waited {total_wait_time} seconds)", "DEBUG",
                           logger=self.ytdl_logger)
-                
-                # Execute ls -lrt in the music directory
-                self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
-                process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
-                self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
-                # Execute ls -lrt in the parent directory of music directory
-                parent_directory = os.path.dirname(music_directory)
-                self._log(f"Executing ls -lrt in {parent_directory}", "DEBUG", logger=self.ytdl_logger)
-                process = subprocess.run(['ls', '-lrt', parent_directory], capture_output=True, text=True)
-                self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
                 await asyncio.sleep(5)  # Wait for 5 seconds
                 total_wait_time += 5
 
@@ -242,18 +230,43 @@ class MusicBot:
 
         except Exception as e:
             self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
-            # Add more specific exception handling here, if possible
             if 'info' in locals() and info:
                 self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
-            return None  # Ensure None is returned on error
+            return None
     
-    def get_currently_playing(self):
-        """Returns the title of the currently playing song or None if not playing."""
-        if self.current_song:
-            return self.current_song['title']
-        return None
+    async def extract_playlist_info(self, url):
+        """
+        Extracts information about a YouTube playlist using yt_dlp.
+
+        Args:
+            url: The URL of the YouTube playlist.
+
+        Returns:
+            A dictionary containing playlist information, including a list of entries (videos),
+            or None if an error occurs.
+        """
+        try:
+            self._log(f"Extracting playlist info for URL: {url}", "INFO", logger=self.ytdl_logger)
+
+            # Use yt_dlp to extract playlist information without downloading
+            # This is more efficient than downloading all videos at this stage.
+            partial = functools.partial(self.ytdl.extract_info, url, download=False)
+            info = await self.loop.run_in_executor(self.thread_pool, partial)
+
+            if not info:
+                self._log(f"Could not extract playlist info for URL: {url}", "WARNING", logger=self.ytdl_logger)
+                return None
+
+            self._log(f"Extracted playlist info: {info}", "DEBUG", logger=self.ytdl_logger)
+
+            # Check if the extracted info is a playlist
+            if 'entries' not in info:
+                self._log(f"URL does not appear to be a playlist: {url}", "WARNING", logger=self.ytdl_logger)
+                return None
+
+            return info
+
+        except Exception as e:
+            self._log(f"Error extracting playlist info: {e}", "ERROR", logger=self.ytdl_logger, url=url)
+            return None
     
-    def is_playing(self, ctx):
-        """Checks if the bot is currently playing audio in the guild."""
-        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
-        return voice_client and voice_client.is_playing()
