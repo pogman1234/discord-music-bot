@@ -1,41 +1,34 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+# Stage 1: Build the React frontend
+FROM node:16-alpine AS frontend-builder
 
-# Set the working directory in the container
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Build the combined backend and bot application
+FROM python:3.9-slim-buster
+
+# Set environment variables for Cloud Run
+ENV PORT=8080
+ENV HOST=0.0.0.0
+
 WORKDIR /app
 
-# Install FFmpeg
-RUN apt-get update && apt-get install -y ffmpeg
+# Copy the built frontend
+COPY --from=frontend-builder /app/frontend/build /app/frontend/build
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+# Install gunicorn globally so the last CMD can see it
+RUN pip install gunicorn
 
-# Create the music directory
-RUN mkdir -p /app/music
-
-# Install any needed packages specified in requirements.txt
+# Copy application code and requirements
+COPY app/ /app/app/
+COPY app/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create a non-root user and group with a specific UID and GID
-# Using a specific UID and GID helps with consistency and security, especially
-# when mounting volumes from the host system.
-ARG UID=1001
-ARG GID=1001
-RUN groupadd -g ${GID} appgroup && \
-    useradd -u ${UID} -g appgroup -m -s /bin/bash appuser
-
-# Change ownership of the /app directory to the new user
-RUN chown -R appuser:appgroup /app
-
-# Switch to the new user
-USER appuser
-
-# Make port 8080 available to the world outside this container
+# Expose the port
 EXPOSE 8080
 
-# Define environment variable for the bot token (set this when running the container)
-ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
-
-# Run main.py when the container launches
-CMD ["python", "music-bot/src/main.py"]
+# Start the application using Gunicorn and run the Discord bot
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 6 --timeout 0 app.main:app --preload

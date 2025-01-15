@@ -1,14 +1,11 @@
 import asyncio
 import discord
-import subprocess
-from discord.ext import commands
 from yt_dlp import YoutubeDL
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import json
 import time
-from googleapiclient.discovery import build
 import os
 import logging
 
