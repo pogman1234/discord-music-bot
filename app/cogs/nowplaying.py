@@ -5,22 +5,22 @@ import logging
 
 logger = logging.getLogger('discord')
 
-class NowPlaying(commands.Cog):
+class NowPlayingCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.music_bot = bot.music_bot
 
     @app_commands.command(name="nowplaying", description="Shows the currently playing song")
     async def nowplaying(self, interaction: discord.Interaction):
         """Displays information about the currently playing song."""
         await interaction.response.defer()
-        ctx = await self.bot.get_context(interaction)
 
-        if not ctx.voice_client or not ctx.voice_client.is_connected():
+        if not interaction.guild.voice_client:
             await interaction.followup.send("Not connected to a voice channel.", ephemeral=True)
             return
 
-        if self.bot.music_bot.current_song:
-            song_info = self.bot.music_bot.current_song
+        if self.music_bot.current_song:
+            song_info = self.music_bot.current_song
             title = song_info['title']
             url = song_info['url']
 
@@ -41,4 +41,4 @@ class NowPlaying(commands.Cog):
 
 async def setup(bot):
     logger.info("Loading nowplaying cog")
-    await bot.add_cog(NowPlaying(bot))
+    await bot.add_cog(NowPlayingCog(bot))

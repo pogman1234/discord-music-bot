@@ -80,32 +80,10 @@ app.add_middleware(
     allow_headers=["*"],  # Allowed headers
 )
 
-
 # --- Health Check Endpoint ---
 @app.get("/healthz")
 async def health_check():
     return {"status": "ok"}
-
-# --- Event: on_ready ---
-@bot.event
-async def on_ready():
-    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
-
-    # Sync slash commands
-    try:
-        synced = await bot.tree.sync()
-        logger.info(f"Synced {len(synced)} command(s)")
-    except Exception as e:
-        logger.error(f"Failed to sync commands: {e}", exc_info=True)
-
-    print(f"Bot is ready. Logged in as {bot.user}")
-    print("------")
-
-# --- Command: /ping ---
-@bot.tree.command(name="ping", description="Replies with Pong!")
-async def ping(interaction: discord.Interaction):
-    logger.info(f"'/ping' command used by {interaction.user} in {interaction.guild}")
-    await interaction.response.send_message("Pong!", ephemeral=True)
 
 # --- Load Cogs ---
 async def load_cogs():
@@ -173,6 +151,9 @@ def get_music_bot():
 # Set signal handlers
 signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
+
+# Include routes here after run_discord_bot function
+app.include_router(routes.router, prefix="/api")
 
 # Main function to start both
 async def main():
