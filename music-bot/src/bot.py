@@ -17,17 +17,17 @@ class MusicBot:
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': os.path.join('music', '%(extractor)s-%(id)s-%(title)s.%(ext)s'),  # Corrected outtmpl
+            'outtmpl': os.path.join('music', '%(extractor)s-%(id)s-%(title)s.%(ext)s'),
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'quiet': False,  # Enabled logging from yt_dlp
-            'no_warnings': False,  # Enabled warnings from yt_dlp
+            'quiet': False,
+            'no_warnings': False,
             'default_search': 'auto',
             'source_address': '0.0.0.0',
-            'verbose': True,  # Enabled verbose output from yt_dlp
+            'verbose': False,
             'debug_printtraffic': True,
             'no_cache_dir': True
         }
@@ -42,6 +42,8 @@ class MusicBot:
         self.volume = 0.5
         self.youtube = youtube
         self.download_dir = "music"
+        self.max_concurrent_downloads = 4
+        self.currently_downloading = set()
 
         # Set up loggers
         self.ytdl_logger = logging.getLogger('ytdl')
@@ -65,7 +67,7 @@ class MusicBot:
 
     async def on_ready(self):
         self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO", logger=self.discord_logger)
-    
+
     def get_currently_playing(self):
         """Returns the title of the currently playing song or None if not playing."""
         if self.current_song:
@@ -105,6 +107,12 @@ class MusicBot:
         self.current_song = self.queue.popleft()
         self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger,
                  url=self.current_song['url'])
+
+        # Check if the song is already downloaded before attempting to play
+        if self.current_song['filepath'] is None:
+            self._log(f"Song not yet downloaded, triggering download: {self.current_song['title']}", "INFO", logger=self.discord_logger)
+            await self.trigger_download_for_current_song()
+            return  # Return and rely on trigger_download_for_current_song to call play_next_song again
 
         # Log the filepath before creating FFmpegPCMAudio source
         self._log(f"Attempting to play from: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
@@ -157,10 +165,13 @@ class MusicBot:
                     self.queue.append(song_info)
                     self._log(f"Added song from playlist to queue: {song_info['title']}", "INFO",
                              logger=self.discord_logger, url=song_info['url'])
+                # Start downloading the first song immediately if nothing is playing
+                if not self.is_playing(ctx) and not self.current_song:
+                    await self.trigger_download_for_current_song()
             else:
                 self._log("No entries found in playlist", "WARNING", logger=self.discord_logger)
         else:
-            song_info = await self.search_song(query)  # Use search_song instead of search_and_download_song
+            song_info = await self.search_song(query)
             self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger)
             if song_info:
                 song_info['filepath'] = None  # Mark as not downloaded yet
@@ -219,6 +230,10 @@ class MusicBot:
             song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
 
             self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
+            
+            if song_info == self.current_song:
+                await self.play_next_song(self.ctx)
+                
             return song_info  # Return updated song_info
 
         except Exception as e:
@@ -230,6 +245,15 @@ class MusicBot:
             self.currently_downloading.discard(url)
             await self.trigger_next_download()
             
+    async def trigger_download_for_current_song(self):
+        """Triggers the download of the current song and sets up a callback for when it's done."""
+        if self.current_song and self.current_song['filepath'] is None and self.current_song['url'] not in self.currently_downloading:
+            self.currently_downloading.add(self.current_song['url'])
+            # Create a task for the download process
+            download_task = asyncio.create_task(self.download_song(self.current_song))
+            
+            self._log(f"Download triggered for current song: {self.current_song['title']}", "INFO", logger=self.discord_logger)
+
     async def trigger_next_download(self):
         """Triggers the download of the next song in the queue if conditions are met."""
         # Count the number of songs that are either downloaded or currently being downloaded
@@ -244,11 +268,11 @@ class MusicBot:
                     asyncio.create_task(self.download_song(song))
                     downloaded_or_downloading_count += 1
                     break
-    
+
     async def extract_playlist_info(self, url):
         """
         Extracts information about a YouTube playlist using yt_dlp.
-        Skips entries that are unavailable due to copyright or other reasons.
+        Skips entries that are unavailable due to copyright, termination, or other reasons.
 
         Args:
             url: The URL of the YouTube playlist.
@@ -274,20 +298,35 @@ class MusicBot:
             if 'entries' not in info:
                 self._log(f"URL does not appear to be a playlist: {url}", "WARNING", logger=self.ytdl_logger)
                 return None
-            
+
             # Filter out unavailable entries
             filtered_entries = []
             for entry in info['entries']:
-                if entry is not None and entry.get('ie_key') != 'RemovedVideo':
-                    filtered_entries.append(entry)
+                if entry is not None:
+                    try:
+                        # Attempt to get the 'id' of the entry. If it fails, the entry is likely unavailable.
+                        entry_id = entry.get('id')
+                        if entry_id is None:
+                            self._log(f"Skipping unavailable entry: No ID found", "INFO", logger=self.ytdl_logger)
+                            continue  # Skip this entry
+
+                        # Additional check for 'ie_key' as before
+                        if entry.get('ie_key') == 'RemovedVideo':
+                            self._log(f"Skipping unavailable entry: {entry_id} (RemovedVideo)", "INFO", logger=self.ytdl_logger)
+                            continue # Skip this entry
+
+                        # If all checks pass, add the entry to the filtered list
+                        filtered_entries.append(entry)
+                        
+                    except Exception as e:
+                        self._log(f"Error processing entry {entry.get('id', 'Unknown')}: {e}", "ERROR", logger=self.ytdl_logger)
+                        continue  # Skip this entry on error
                 else:
-                    self._log(f"Skipping unavailable entry: {entry.get('id') if entry else 'Unknown'}", "INFO", logger=self.ytdl_logger)
+                    self._log(f"Skipping unavailable entry: None", "INFO", logger=self.ytdl_logger)
 
             info['entries'] = filtered_entries
-            
             return info
 
         except Exception as e:
             self._log(f"Error extracting playlist info: {e}", "ERROR", logger=self.ytdl_logger, url=url)
             return None
-    
