@@ -71,12 +71,12 @@ class MusicBot:
         if self.current_song:
             return self.current_song['title']
         return None
-    
+
     def is_playing(self, ctx):
         """Checks if the bot is currently playing audio in the guild."""
         voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
         return voice_client and voice_client.is_playing()
-    
+
     def play_next_song_callback(self, ctx):
         self.loop.call_soon_threadsafe(self.cleanup_current_song)
         if self.queue:
@@ -89,8 +89,10 @@ class MusicBot:
                 self._log(f"Removed file: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
             except Exception as e:
                 self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger,
-                          filepath=self.current_song['filepath'])
+                         filepath=self.current_song['filepath'])
         self.current_song = None
+        self.currently_downloading.discard(self.current_song['url'])
+        asyncio.run_coroutine_threadsafe(self.trigger_next_download(), self.loop)
 
     async def play_next_song(self, ctx):
         self.ctx = ctx  # Store context for use in after_callback
@@ -102,7 +104,7 @@ class MusicBot:
 
         self.current_song = self.queue.popleft()
         self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger,
-                  url=self.current_song['url'])
+                 url=self.current_song['url'])
 
         # Log the filepath before creating FFmpegPCMAudio source
         self._log(f"Attempting to play from: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
@@ -143,31 +145,39 @@ class MusicBot:
     async def add_to_queue(self, ctx, query):
         if 'playlist' in query.lower() or 'list' in query.lower():
             self._log(f"Playlists are not supported with YouTube API search, using yt_dlp instead: {query}",
-                      "WARNING", logger=self.discord_logger)
+                     "WARNING", logger=self.discord_logger)
             info = await self.extract_playlist_info(query)
             if 'entries' in info:
                 for entry in info['entries']:
-                    song_info = await self.download_song(entry['url'])
-                    if song_info:
-                        self.queue.append(song_info)
-                self._log(f"Added {len(info['entries'])} songs from playlist to the queue.", "INFO",
-                          logger=self.discord_logger)
+                    song_info = {
+                        'title': entry['title'],
+                        'url': entry['url'],
+                        'filepath': None  # Mark as not downloaded yet
+                    }
+                    self.queue.append(song_info)
+                    self._log(f"Added song from playlist to queue: {song_info['title']}", "INFO",
+                             logger=self.discord_logger, url=song_info['url'])
             else:
                 self._log("No entries found in playlist", "WARNING", logger=self.discord_logger)
         else:
-            song_info = await self.search_and_download_song(query)
-            self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger)  # Log song_info
+            song_info = await self.search_song(query)  # Use search_song instead of search_and_download_song
+            self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger)
             if song_info:
+                song_info['filepath'] = None  # Mark as not downloaded yet
                 self.queue.append(song_info)
                 self._log(f"Added song to queue: {song_info['title']}", "INFO", logger=self.discord_logger,
-                          url=song_info['url'])
+                         url=song_info['url'])
+
+        # Trigger download process
+        await self.trigger_next_download()
 
         if not self.is_playing(ctx) and not self.current_song:
             await self.play_next_song(ctx)
 
         return song_info
 
-    async def search_and_download_song(self, query):
+    async def search_song(self, query):
+        """Searches for a song using the YouTube API and returns song info."""
         try:
             self._log(f"Searching YouTube for query: {query}", "INFO", logger=self.discord_logger)
             search_response = self.youtube.search().list(
@@ -185,58 +195,60 @@ class MusicBot:
 
             video_id = search_response["items"][0]["id"]["videoId"]
             video_url = f"https://www.youtube.com/watch?v={video_id}"
+            video_title = search_response["items"][0]["snippet"]["title"]
 
             self._log(f"Found video URL: {video_url}", "INFO", logger=self.discord_logger)
 
-            return await self.download_song(video_url)
+            return {'title': video_title, 'url': video_url}
 
         except Exception as e:
-            self._log(f"Error searching with YouTube API or downloading song: {e}", "ERROR",
-                      logger=self.discord_logger, query=query)
+            self._log(f"Error searching with YouTube API: {e}", "ERROR", logger=self.discord_logger, query=query)
             return None
 
-    async def download_song(self, url):
+    async def download_song(self, song_info):
+        """Downloads a song using yt_dlp in a background thread."""
+        url = song_info['url']
         try:
             self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
 
-            # Get the current working directory
-            current_directory = os.getcwd()
-            self._log(f"Current working directory: {current_directory}", "DEBUG", logger=self.ytdl_logger)
-
+            # Use run_in_executor to run yt_dlp's synchronous download process in a separate thread
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
-            self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
-
             filepath = os.path.join(self.ytdl.prepare_filename(info))
+            song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
 
-            # Wait for file to be created with a longer interval and timeout
-            total_wait_time = 0
-            while not os.path.exists(filepath) and total_wait_time < 60:  # Timeout after 60 seconds
-                self._log(f"Waiting for file to be downloaded: {filepath} (waited {total_wait_time} seconds)", "DEBUG",
-                          logger=self.ytdl_logger)
-                await asyncio.sleep(5)  # Wait for 5 seconds
-                total_wait_time += 5
-
-            if os.path.exists(filepath):
-                song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
-                self._log(f"Song info before return: {song_info}", "DEBUG", logger=self.ytdl_logger)
-                self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-                return song_info
-            else:
-                self._log(f"File did not download after waiting for 60 seconds: {filepath}", "ERROR",
-                          logger=self.ytdl_logger)
-                return None
+            self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
+            return song_info  # Return updated song_info
 
         except Exception as e:
             self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
             if 'info' in locals() and info:
                 self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
             return None
+        finally:
+            self.currently_downloading.discard(url)
+            await self.trigger_next_download()
+            
+    async def trigger_next_download(self):
+        """Triggers the download of the next song in the queue if conditions are met."""
+        # Count the number of songs that are either downloaded or currently being downloaded
+        downloaded_or_downloading_count = sum(1 for song in self.queue if song['filepath'] is not None or song['url'] in self.currently_downloading)
+
+        # Start downloading if we haven't reached the max concurrent downloads and there are songs in the queue
+        while len(self.currently_downloading) < self.max_concurrent_downloads and downloaded_or_downloading_count < len(self.queue) and downloaded_or_downloading_count < 4:
+            for song in self.queue:
+                if song['filepath'] is None and song['url'] not in self.currently_downloading:
+                    self.currently_downloading.add(song['url'])
+                    # Start the download process in the background
+                    asyncio.create_task(self.download_song(song))
+                    downloaded_or_downloading_count += 1
+                    break
     
     async def extract_playlist_info(self, url):
         """
         Extracts information about a YouTube playlist using yt_dlp.
+        Skips entries that are unavailable due to copyright or other reasons.
 
         Args:
             url: The URL of the YouTube playlist.
@@ -249,7 +261,6 @@ class MusicBot:
             self._log(f"Extracting playlist info for URL: {url}", "INFO", logger=self.ytdl_logger)
 
             # Use yt_dlp to extract playlist information without downloading
-            # This is more efficient than downloading all videos at this stage.
             partial = functools.partial(self.ytdl.extract_info, url, download=False)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
@@ -263,7 +274,17 @@ class MusicBot:
             if 'entries' not in info:
                 self._log(f"URL does not appear to be a playlist: {url}", "WARNING", logger=self.ytdl_logger)
                 return None
+            
+            # Filter out unavailable entries
+            filtered_entries = []
+            for entry in info['entries']:
+                if entry is not None and entry.get('ie_key') != 'RemovedVideo':
+                    filtered_entries.append(entry)
+                else:
+                    self._log(f"Skipping unavailable entry: {entry.get('id') if entry else 'Unknown'}", "INFO", logger=self.ytdl_logger)
 
+            info['entries'] = filtered_entries
+            
             return info
 
         except Exception as e:
