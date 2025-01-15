@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import signal
+import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 import discord
 from discord.ext import commands
@@ -68,7 +69,7 @@ app.include_router(routes.router, prefix="/api")
 
 # --- CORS Configuration ---
 origins = [
-    "https://poggles-discord-bot-235556599709.us-east1.run.app/",  # Replace with your React app's URL on Cloud Run
+    "https://poggles-discord-bot-235556599709.us-east1.run.app",  # Replace with your React app's URL on Cloud Run
 ]
 
 app.add_middleware(

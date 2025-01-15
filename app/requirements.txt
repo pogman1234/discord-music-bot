@@ -1,7 +1,9 @@
-Flask
 discord.py
 python-dotenv
 yt-dlp
 PyNaCl
 validators
 google-api-python-client
+gunicorn
+uvicorn
+fastapi
