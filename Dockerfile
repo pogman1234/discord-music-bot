@@ -27,9 +27,6 @@ COPY app/ /app/app/
 COPY app/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy frontend
-COPY frontend/ /app/frontend/
-
 # Expose the port
 EXPOSE 8080
 

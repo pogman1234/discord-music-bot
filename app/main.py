@@ -4,8 +4,7 @@ import json
 import logging
 import sys
 import signal
-import threading
-
+from fastapi.middleware.cors import CORSMiddleware
 import discord
 from discord.ext import commands
 from fastapi import FastAPI
@@ -66,6 +65,20 @@ youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 # --- FastAPI Setup ---
 app = FastAPI(title="Discord Music Bot API")
 app.include_router(routes.router, prefix="/api")
+
+# --- CORS Configuration ---
+origins = [
+    "https://poggles-discord-bot-235556599709.us-east1.run.app/",  # Replace with your React app's URL on Cloud Run
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # List of allowed origins
+    allow_credentials=True,  # Set to True if you need to allow cookies or authorization headers
+    allow_methods=["*"],  # Allowed HTTP methods (e.g., "GET", "POST", "PUT", "DELETE")
+    allow_headers=["*"],  # Allowed headers
+)
+
 
 # --- Health Check Endpoint ---
 @app.get("/healthz")
@@ -151,6 +164,10 @@ def handle_exit(signum, frame):
     shutdown_event.set()
     if bot:
         asyncio.create_task(bot.close())
+
+# Make the music_bot instance accessible
+def get_music_bot():
+    return bot.music_bot
 
 # Set signal handlers
 signal.signal(signal.SIGTERM, handle_exit)
