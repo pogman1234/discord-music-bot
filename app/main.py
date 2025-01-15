@@ -4,16 +4,15 @@ import json
 import logging
 import sys
 import signal
-import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 import discord
 from discord.ext import commands
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from uvicorn import Config, Server
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
 
-from .api import routes
+from .core.discord_bot import bot, youtube  # Import bot and youtube
 from .core.bot import MusicBot
 
 # --- Load environment variables ---
@@ -74,10 +73,10 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # List of allowed origins
-    allow_credentials=True,  # Set to True if you need to allow cookies or authorization headers
-    allow_methods=["*"],  # Allowed HTTP methods (e.g., "GET", "POST", "PUT", "DELETE")
-    allow_headers=["*"],  # Allowed headers
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Health Check Endpoint ---
@@ -98,6 +97,14 @@ async def load_cogs():
 
 # Global variable to indicate shutdown
 shutdown_event = asyncio.Event()
+
+# Make the music_bot instance accessible (moved up)
+def get_music_bot():
+    return bot.music_bot
+
+# Import routes after get_music_bot is defined
+from .api import routes  # Import routes here
+app.include_router(routes.router, prefix="/api")
 
 # Function to run the Discord bot
 async def run_discord_bot():
@@ -144,16 +151,9 @@ def handle_exit(signum, frame):
     if bot:
         asyncio.create_task(bot.close())
 
-# Make the music_bot instance accessible
-def get_music_bot():
-    return bot.music_bot
-
 # Set signal handlers
 signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
-
-# Include routes here after run_discord_bot function
-app.include_router(routes.router, prefix="/api")
 
 # Main function to start both
 async def main():

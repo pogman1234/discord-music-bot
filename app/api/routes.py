@@ -2,9 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from ..core.bot import MusicBot
 from ..core.discord_bot import bot
 import discord
-
-router = APIRouter()
-
+from ..main import get_music_bot
 
 router = APIRouter()
 
