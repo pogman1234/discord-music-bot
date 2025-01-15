@@ -14,6 +14,7 @@ from googleapiclient.discovery import build
 
 from .core.discord_bot import bot, youtube  # Import bot and youtube
 from .core.bot import MusicBot
+from .api import routes  # Import routes here
 
 # --- Load environment variables ---
 load_dotenv()
