@@ -1,7 +1,3 @@
-# Environment files (keep sensitive info out of images)
-.env
-.env.*
-
 # Virtual environment (not needed in the container)
 .venv
 
@@ -11,6 +7,7 @@
 
 # Build/compiled output (already handled by multi-stage build)
 frontend/build/
+music-bot/build/
 
 # Node Modules (install these fresh in the container)
 frontend/node_modules
@@ -26,3 +23,15 @@ Thumbs.db  # Windows
 
 # Log files (optional, depending on your needs)
 *.log
+
+# Git (optional, but recommended if you don't want .git in the image)
+.git
+.gitignore
+
+# Docker (optional, but good practice)
+Dockerfile
+docker-compose.yml
+
+# React Router (these are dev dependencies or related to the build process)
+.react-router
+frontend/package-lock.json
