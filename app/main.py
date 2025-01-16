@@ -12,7 +12,6 @@ from fastapi.staticfiles import StaticFiles
 
 from .core.discord_bot import bot, youtube  # Import bot and youtube
 from .core.bot import MusicBot
-from .api.routes import router  # Import the router
 
 # --- Logging Setup (Adjusted for Cloud Run) ---
 class GoogleCloudLogFormatter(logging.Formatter):
@@ -65,9 +64,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include the router
-app.include_router(router, prefix="/api")
-
 # --- Health Check Endpoint ---
 @app.get("/healthz")
 async def health_check():
@@ -104,6 +100,10 @@ async def run_discord_bot():
         if not shutdown_event.is_set():
             await bot.close()
             
+# Import routes after app is defined
+from .api import routes
+app.include_router(routes.router, prefix="/api")
+
 # Signal handler function
 def handle_exit(signum, frame):
     print("Shutting down gracefully...")
@@ -127,6 +127,4 @@ async def main():
 
 # Entry point for Gunicorn (and allows for local testing)
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
     asyncio.run(main())

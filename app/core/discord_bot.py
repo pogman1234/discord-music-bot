@@ -1,10 +1,9 @@
-import logging
 import os
 import discord
 from discord.ext import commands
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
-from .bot import MusicBot  # Import the MusicBot class
+import logging
 
 logger = logging.getLogger('discord-music-bot')
 
@@ -18,9 +17,6 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=inten
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-
-# Assign MusicBot instance to bot.music_bot
-bot.music_bot = MusicBot(bot, youtube)
 
 # --- Event: on_ready ---
 @bot.event
