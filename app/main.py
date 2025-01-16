@@ -90,10 +90,6 @@ async def startup_event():
     await load_cogs()
     asyncio.create_task(run_discord_bot())
 
-# Import routes after app is defined
-from .api import routes
-app.include_router(routes.router, prefix="/api")
-
 # Function to run the Discord bot
 async def run_discord_bot():
     try:
@@ -103,6 +99,10 @@ async def run_discord_bot():
     finally:
         if not shutdown_event.is_set():
             await bot.close()
+            
+# Import routes after app is defined
+from .api import routes
+app.include_router(routes.router, prefix="/api")
 
 # Signal handler function
 def handle_exit(signum, frame):
