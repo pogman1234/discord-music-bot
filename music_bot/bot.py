@@ -15,23 +15,19 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict
 from datetime import datetime
 
-@dataclass
 class Song:
-    title: str
-    url: str
-    duration: str
-    thumbnail: Optional[str] = None
-    requested_by: Optional[str] = None
-    added_at: datetime = datetime.now()
+    def __init__(self, url: str, title: str, duration: int, thumbnail: str = None):
+        self.url = url
+        self.title = title
+        self.duration = duration
+        self.thumbnail = thumbnail
 
     def to_dict(self) -> Dict:
         return {
-            "title": self.title,
-            "url": self.url,
-            "duration": self.duration,
-            "thumbnail": self.thumbnail,
-            "requested_by": self.requested_by,
-            "added_at": self.added_at.isoformat()
+            'url': self.url,
+            'title': self.title,
+            'duration': self.duration,
+            'thumbnail': self.thumbnail
         }
 
 class MusicBot:
@@ -166,8 +162,7 @@ class MusicBot:
                 url=info['url'],
                 title=info['title'],
                 duration=info['duration'],
-                thumbnail=info.get('thumbnail'),
-                webpage_url=info.get('webpage_url', url)
+                thumbnail=info.get('thumbnail')
             )
             
             self.queue.append(song)
