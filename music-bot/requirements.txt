@@ -1,4 +1,5 @@
-Flask
+fastapi
+uvicorn
 discord.py
 python-dotenv
 yt-dlp
