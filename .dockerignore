@@ -34,4 +34,3 @@ docker-compose.yml
 
 # React Router (these are dev dependencies or related to the build process)
 .react-router
-frontend/package-lock.json
