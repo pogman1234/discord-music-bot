@@ -7,7 +7,7 @@ import uvicorn
 from dotenv import load_dotenv
 import logging
 import asyncio
-from bot import MusicBot
+from music_bot.bot import MusicBot
 from googleapiclient.discovery import build
 import json
 from fastapi import FastAPI
