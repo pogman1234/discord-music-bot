@@ -10,6 +10,13 @@ RUN npm run build
 # Stage 2: Build the combined backend and bot application
 FROM python:3.9-slim-buster
 
+RUN apt-get update && \
+    apt-get install -y \
+    ffmpeg \
+    python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set environment variables for Cloud Run
 ENV PORT=8080
 ENV HOST=0.0.0.0
