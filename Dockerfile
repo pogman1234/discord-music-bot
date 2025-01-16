@@ -18,7 +18,7 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Copy the built frontend
-COPY --from=frontend-build /app/frontend/dist /app/frontend/build
+COPY --from=frontend-build /app/frontend/build /app/frontend/build
 
 # Copy the backend
 COPY --from=backend-build /app/musicbot /app/musicbot

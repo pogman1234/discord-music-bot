@@ -8,3 +8,4 @@ cookies.txt
 music/
 .DS_Store
 frontend/.react-router/
+build/
