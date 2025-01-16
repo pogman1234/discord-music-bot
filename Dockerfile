@@ -25,7 +25,7 @@ RUN pip install gunicorn
 # Copy application code and requirements
 COPY app/ /app/app/
 
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r app/requirements.txt
 
 # Expose the port
 EXPOSE 8080
