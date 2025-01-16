@@ -5,7 +5,7 @@ import logging
 import json
 import time
 
-logger = logging.getLogger('discord')
+logger = logging.getLogger('discord-music-bot')
 
 class QueueCog(commands.Cog):
     def __init__(self, bot):
@@ -42,11 +42,6 @@ class QueueCog(commands.Cog):
             "message": message,
             "severity": severity,
             "timestamp": {"seconds": int(time.time()), "nanos": 0},
-            "component": "queue_cog",
             **kwargs,
         }
         logger.log(logging.getLevelName(severity), json.dumps(entry))
-
-async def setup(bot):
-    logger.info("Loading queue cog")
-    await bot.add_cog(QueueCog(bot))
