@@ -24,11 +24,11 @@ RUN pip install gunicorn
 
 # Copy application code and requirements
 COPY app/ /app/app/
-
-RUN pip install --no-cache-dir -r app/requirements.txt
+COPY app/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Expose the port
 EXPOSE 8080
 
 # Start the application using Gunicorn and run the Discord bot
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 6 --timeout 0 --worker-class uvicorn.workers.UvicornWorker main:app --preload
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 6 --timeout 0 --worker-class uvicorn.workers.UvicornWorker app.main:app --preload
