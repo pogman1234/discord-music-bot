@@ -23,8 +23,7 @@ RUN apt-get update && apt-get install -y ffmpeg
 
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r /music_bot/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r music_bot/requirements.txt
 
 # Create a non-root user
 ARG UID=1001
