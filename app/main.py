@@ -1,18 +1,17 @@
+#Updated main.py
 import asyncio
 import os
 import json
 import logging
 import sys
 import signal
-from fastapi.staticfiles import StaticFiles
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .core.discord_bot import bot, youtube  # Import bot and youtube
 from .core.bot import MusicBot
-
-# --- Load environment variables ---
-# Environment variables are already loaded in discord_bot
 
 # --- Logging Setup (Adjusted for Cloud Run) ---
 class GoogleCloudLogFormatter(logging.Formatter):
@@ -49,6 +48,9 @@ ytdl_logger.addHandler(console_handler)
 # --- FastAPI Setup ---
 app = FastAPI(title="Discord Music Bot API")
 
+# Mount the static files from the React build
+app.mount("/", StaticFiles(directory="/app/frontend/build", html=True), name="static")
+
 # --- CORS Configuration ---
 origins = [
     "https://poggles-discord-bot-235556599709.us-east1.run.app",  # Replace with your React app's URL on Cloud Run
@@ -81,16 +83,23 @@ async def load_cogs():
 # Global variable to indicate shutdown
 shutdown_event = asyncio.Event()
 
-# Import routes after get_music_bot is defined
-from .api import routes  # Import routes here
+# Create MusicBot instance on startup
+@app.on_event("startup")
+async def startup_event():
+    bot.music_bot = MusicBot(bot, youtube)
+    await load_cogs()
+    asyncio.create_task(run_discord_bot())
+
+# Import routes after app is defined
+from .api import routes
 app.include_router(routes.router, prefix="/api")
 
 # Function to run the Discord bot
 async def run_discord_bot():
     try:
-        bot.music_bot = MusicBot(bot, youtube)
-        await load_cogs()
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
+    except Exception as e:
+        logger.error(f"Error starting Discord bot: {e}", exc_info=True)
     finally:
         if not shutdown_event.is_set():
             await bot.close()
@@ -106,18 +115,16 @@ def handle_exit(signum, frame):
 signal.signal(signal.SIGTERM, handle_exit)
 signal.signal(signal.SIGINT, handle_exit)
 
-# Main function to start both
+# Main function
 async def main():
-    # Start the Discord bot
+    # Create the run_discord_bot task but don't wait for it here
     discord_task = asyncio.create_task(run_discord_bot())
 
-    await asyncio.wait(
-        [discord_task],
-        return_when=asyncio.FIRST_COMPLETED,
-    )
-    
-app.mount("/", StaticFiles(directory="/app/frontend/build", html=True), name="static")
+    # You can add other tasks here if needed
 
-# Entry point for Gunicorn (and allows local testing)
+    # Keep the main function alive to handle signals
+    await discord_task
+
+# Entry point for Gunicorn (and allows for local testing)
 if __name__ == "__main__":
     asyncio.run(main())
