@@ -26,6 +26,10 @@ COPY --from=backend-build /app/musicbot /app/musicbot
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
 
+# Install Python dependencies
+COPY music-bot/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 # Create a non-root user and group with a specific UID and GID
 ARG UID=1001
 ARG GID=1001
