@@ -3,10 +3,11 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import os
+import uvicorn
 from dotenv import load_dotenv
 import logging
 import asyncio
-from bot import MusicBot  # Import MusicBot
+from bot import MusicBot
 from googleapiclient.discovery import build
 import json
 from fastapi import FastAPI
@@ -61,15 +62,15 @@ ytdl_logger.addHandler(console_handler)
 
 # --- Intents Setup ---
 intents = discord.Intents.default()
-intents.message_content = True  # Needed for reading message content
-intents.voice_states = True  # Needed for voice-related events
+intents.message_content = True
+intents.voice_states = True
 
 # --- Bot Setup ---
 bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=intents)
 
 # --- YouTube Data API Setup ---
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)  # Create youtube client here
+youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # --- FastAPI Setup for Health Check and Frontend ---
 app = FastAPI()
@@ -79,8 +80,8 @@ app.mount("/", StaticFiles(directory="/app/frontend/build", html=True), name="st
 
 # CORS configuration
 origins = [
-    "http://localhost:3000",  # React development server
-    "https://poggles-discord-bot-235556599709.us-east1.run.app",  # Deployed React app
+    "http://localhost:3000",
+    "https://poggles-discord-bot-235556599709.us-east1.run.app",
 ]
 
 app.add_middleware(
@@ -140,10 +141,9 @@ async def start_bot():
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
-@app.on_event("startup")
+@app.event_handler("startup")
 async def startup_event():
     asyncio.create_task(start_bot())
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    uvicorn.run(app, host="0.0.0.0", port=8080)
