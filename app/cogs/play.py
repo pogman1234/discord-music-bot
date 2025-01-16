@@ -1,46 +1,41 @@
-from discord.ext import commands
-from discord import app_commands
 import discord
+from discord.ext import commands
 import logging
 
-logger = logging.getLogger('discord')
+logger = logging.getLogger(__name__)
 
 class PlayCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.music_bot = bot.music_bot
+        self.music_bot = bot.get_cog("MusicBot")
 
-    @app_commands.command(name="play", description="Plays audio from a YouTube URL or search term")
-    async def play(self, interaction: discord.Interaction, *, arg: str):
-        """Plays audio from a YouTube URL or search term."""
-        await interaction.response.defer()
+    @commands.command(name="play")
+    async def play(self, ctx, *, arg):
+        """
+        Plays a song from a given URL or search query.
 
-        if not interaction.user.voice:
-            await interaction.followup.send("You are not connected to a voice channel!")
-            return
+        Args:
+            ctx (commands.Context): The context of the command.
+            arg (str): The URL or search query for the song.
+        """
+        voice_channel = ctx.author.voice.channel
+        voice_client = ctx.voice_client
 
-        voice_channel = interaction.user.voice.channel
-
-        voice_client = interaction.guild.voice_client
-        if voice_client is None:
+        if not voice_client:
             logger.info(f"Connecting to voice channel: {voice_channel.name}")
             voice_client = await voice_channel.connect()
-        else:
+        elif voice_client.channel != voice_channel:
             logger.info(f"Moving to voice channel: {voice_channel.name}")
             await voice_client.move_to(voice_channel)
 
-        # Add to queue (only add to queue here)
         logger.info(f"Adding to queue: {arg}")
-        ctx = await self.bot.get_context(interaction) # Create ctx from interaction
         song_info = await self.music_bot.add_to_queue(ctx, arg)
 
         if song_info:
             logger.info(f"Song info: {song_info}")
 
-            # Send "Added to queue" message with clickable title
             embed = discord.Embed(title="Added to Queue", description=f"[{song_info['title']}]({song_info['url']})", color=discord.Color.green())
 
-            # Get the video thumbnail
             try:
                 video_id = song_info['url'].split("watch?v=")[1]
                 thumbnail_url = f"https://img.youtube.com/vi/{video_id}/0.jpg"
@@ -48,14 +43,13 @@ class PlayCog(commands.Cog):
             except Exception as e:
                 logger.error(f"Error getting thumbnail: {e}")
 
-            await interaction.followup.send(embed=embed)
-
+            await ctx.send(embed=embed)
         else:
             logger.error("Error: song_info is None")
-            await interaction.followup.send("An error occurred while processing the song.")
+            await ctx.send("An error occurred while processing the song.")
 
-    def is_playing(self, interaction: discord.Interaction):
-        voice_client = interaction.guild.voice_client
+    def is_playing(self, ctx):
+        voice_client = ctx.guild.voice_client
         return voice_client and voice_client.is_playing()
 
 async def setup(bot):

@@ -6,8 +6,12 @@ import './App.css';
 const App: React.FC = () => {
   return (
     <div className="App">
-      <h1>Discord Music Bot</h1>
-      <NowPlaying />
+      <header className="App-header">
+        <h1>Discord Music Bot</h1>
+      </header>
+      <main>
+        <NowPlaying />
+      </main>
     </div>
   );
 };

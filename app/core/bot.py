@@ -8,7 +8,6 @@ import json
 import time
 import os
 import logging
-import functools
 import subprocess
 
 class MusicBot:
@@ -250,7 +249,7 @@ class MusicBot:
             self._log(f"Successfully downloaded: {info['title']} into {song_info['filepath']}", "INFO", logger=self.ytdl_logger)
             
             if song_info == self.current_song:
-                await self.play_next_song(self.ctx)
+                await self.play_song(self.ctx, song_info)
                 
             return song_info
 
@@ -262,7 +261,33 @@ class MusicBot:
         finally:
             self.currently_downloading.discard(url)
             await self.trigger_next_download()
-            
+
+    async def play_song(self, ctx, song_info):
+        """
+        Plays the specified song in the voice channel of the context.
+
+        Args:
+            ctx (discord.ext.commands.Context): The context of the command.
+            song_info (dict): A dictionary containing the song information, including the filepath.
+        """
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
+        if not voice_client:
+            if ctx.author.voice:
+                channel = ctx.author.voice.channel
+                voice_client = await channel.connect()
+            else:
+                await ctx.send("You are not connected to a voice channel.")
+                return
+
+        filepath = song_info['filepath']
+        self._log(f"Playing song from filepath: {filepath}", "INFO", logger=self.discord_logger)
+
+        voice_client.play(discord.FFmpegPCMAudio(executable="ffmpeg", source=filepath), after=lambda e: self.loop.create_task(self.play_next_song(ctx)))
+        voice_client.source = discord.PCMVolumeTransformer(voice_client.source)
+        voice_client.source.volume = self.volume
+
+        await ctx.send(f"Now playing: {song_info['title']}")
+
     async def trigger_download_for_current_song(self):
         """Triggers the download of the current song and sets up a callback for when it's done."""
         if self.current_song and self.current_song['filepath'] is None and self.current_song['url'] not in self.currently_downloading:
