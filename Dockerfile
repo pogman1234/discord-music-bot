@@ -23,7 +23,7 @@ COPY --from=frontend-builder /app/frontend/build /app/frontend/build
 RUN pip install gunicorn
 
 # Copy application code and requirements
-COPY app/ /app/
+COPY /app/ /app/
 COPY requirements.txt /app/
 
 RUN pip install --no-cache-dir -r requirements.txt
