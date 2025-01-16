@@ -20,7 +20,7 @@ FROM python:3.9-slim
 WORKDIR /  # Set working directory to root
 
 # Copy the built frontend from the previous stage
-COPY --from=frontend-build /frontend/dist /frontend
+COPY --from=frontend-build /frontend/build /frontend
 
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
