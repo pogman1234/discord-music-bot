@@ -50,4 +50,4 @@ ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
 ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY} 
 
 # Run the FastAPI app 
-CMD ["uvicorn", "music_bot.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.music_bot.main:app", "--host", "0.0.0.0", "--port", "8080"]
