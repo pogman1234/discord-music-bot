@@ -14,14 +14,6 @@ FROM python:3.9-slim-buster
 ENV PORT=8080
 ENV HOST=0.0.0.0
 
-# Install system dependencies including FFMPEG
-RUN apt-get update && \
-    apt-get install -y \
-    ffmpeg \
-    python3-pip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Copy the built frontend
@@ -32,7 +24,6 @@ RUN pip install gunicorn
 
 # Copy application code and requirements
 COPY app/ /app/app/
-RUN mkdir -p /app/app/music && chmod 777 /app/app/music
 COPY app/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
