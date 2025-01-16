@@ -7,7 +7,7 @@ import uvicorn
 from dotenv import load_dotenv
 import logging
 import asyncio
-from music_bot.bot import MusicBot
+from bot import MusicBot
 from googleapiclient.discovery import build
 import json
 from fastapi import FastAPI
@@ -76,7 +76,7 @@ youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 app = FastAPI()
 
 # Serve the React static files
-app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
+app.mount("/", StaticFiles(directory="/frontend/build/server", html=True), name="static")
 
 # CORS configuration
 origins = [
@@ -127,7 +127,7 @@ async def ping(interaction: discord.Interaction):
 
 # --- Load Cogs ---
 async def load_cogs():
-    for filename in os.listdir("./music-bot/commands"):
+    for filename in os.listdir("commands/"):
         if filename.endswith(".py"):
             extension = filename[:-3]
             try:
@@ -141,7 +141,7 @@ async def start_bot():
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
-@app.event_handler("startup")
+@app.on_event("startup")
 async def startup_event():
     asyncio.create_task(start_bot())
 

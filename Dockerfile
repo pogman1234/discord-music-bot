@@ -13,20 +13,20 @@ RUN npm run build
 # Stage 2: Build the backend (Combined with final stage)
 FROM python:3.9-slim
 
-WORKDIR /  # Set working directory to root
+WORKDIR /music_bot
 
 # Copy the built frontend from the previous stage
-COPY --from=frontend-build /frontend/build /frontend
+COPY --from=frontend-build /frontend/build /frontend/build/
 
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
 
-COPY music_bot/requirements.txt /music_bot/
+COPY music_bot/requirements.txt ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r /music_bot/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY music_bot/ /music_bot/
+COPY music_bot/ ./
 
 # Create a non-root user
 ARG UID=1001
@@ -48,4 +48,4 @@ ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
 ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
 
 # Run the FastAPI app
-CMD ["uvicorn", "music_bot.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
