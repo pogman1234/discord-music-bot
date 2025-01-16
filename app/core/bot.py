@@ -56,7 +56,16 @@ class MusicBot:
         self.discord_logger = logging.getLogger('discord')
         self.discord_logger.setLevel(logging.INFO)
 
-        os.makedirs(self.download_dir, exist_ok=True)
+        try:
+            os.makedirs('/app/music', exist_ok=True)
+            # Test write permissions
+            test_file = '/app/music/test.txt'
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+        except Exception as e:
+            logger.error(f"Failed to setup music directory: {e}")
+            raise
 
     def _log(self, message, severity="INFO", logger=None, **kwargs):
         entry = {
@@ -154,6 +163,14 @@ class MusicBot:
                 self._log(f"Error during playback: {e}", "ERROR", logger=self.discord_logger)
                 await ctx.send("An error occurred during playback.")
                 return
+
+        try:
+            logger.info(f"Voice client status: {ctx.voice_client.is_connected()}")
+            logger.info(f"Current song filepath: {self.current_song['filepath']}")
+            logger.info(f"FFMPEG options: {self.ffmpeg_options}")
+            logger.info(f"FFMPEG executable path: {await asyncio.create_subprocess_shell('which ffmpeg')}")
+        except Exception as e:
+            logger.error(f"Error in play_next_song: {e}", exc_info=True)
 
     async def add_to_queue(self, ctx, query):
         if 'playlist' in query.lower() or 'list' in query.lower():
