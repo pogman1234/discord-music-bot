@@ -7,7 +7,7 @@ const NowPlaying: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/nowplaying');  // Use relative URL
+        const response = await fetch('api/nowplaying');  // Use relative URL
         const data = await response.json();
 
         if (response.ok) {
