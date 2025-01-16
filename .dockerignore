@@ -1,5 +1,28 @@
+# Environment files (keep sensitive info out of images)
 .env
+.env.*
+
+# Virtual environment (not needed in the container)
 .venv
-music/
-.react-router
+
+# IDE-specific files (if you use these IDEs)
+.idea/
+.vscode/
+
+# Build/compiled output (already handled by multi-stage build)
+frontend/build/
+
+# Node Modules (install these fresh in the container)
 frontend/node_modules
+
+# Python cache files
+**/__pycache__/
+*.pyc
+*.pyo
+
+# OS-generated files
+.DS_Store  # macOS
+Thumbs.db  # Windows
+
+# Log files (optional, depending on your needs)
+*.log

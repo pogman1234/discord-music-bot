@@ -18,7 +18,7 @@ COPY --from=frontend-build /frontend/build /frontend/build
 RUN apt-get update && apt-get install -y ffmpeg
 
 # Copy requirements.txt (both for music_bot and potentially for root level)
-COPY music_bot/requirements.txt /music_bot/
+COPY music-bot/requirements.txt /music_bot/
 COPY requirements.txt .
 
 # Install Python dependencies
