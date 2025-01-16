@@ -9,7 +9,7 @@ const NowPlaying: React.FC<NowPlayingProps> = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/nowplaying');
+        const response = await fetch('/api/nowplaying'); // This is the critical part
         const data = await response.json();
 
         if (response.ok) {
