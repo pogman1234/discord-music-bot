@@ -2,6 +2,9 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /frontend
 
+COPY frontend/package.json frontend/package-lock.json ./
+
+RUN npm ci
 
 # Build the frontend using Vite
 RUN npm run build
