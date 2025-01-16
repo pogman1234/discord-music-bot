@@ -2,6 +2,7 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /frontend
 
+RUN ls -lrt
 # Install dependencies
 RUN npm ci
 
