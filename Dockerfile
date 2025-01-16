@@ -2,12 +2,9 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /frontend
 
-RUN ls -lrt
-# Install dependencies
-RUN npm ci
 
 # Build the frontend using Vite
-RUN npx vite build
+RUN npm run build
 
 # Stage 2: Build the backend (Combined with final stage)
 FROM python:3.9-slim
