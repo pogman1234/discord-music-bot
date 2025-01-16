@@ -8,6 +8,8 @@ import json
 import time
 import os
 import logging
+import functools
+import subprocess
 
 class MusicBot:
     def __init__(self, bot, youtube):
@@ -222,11 +224,13 @@ class MusicBot:
             # Use run_in_executor to run yt_dlp's synchronous download process in a separate thread
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
+            self._log(f"Current working directory: {os.getcwd()}")
+            relative_filepath = self.ytdl.prepare_filename(info)
+            absolute_filepath = os.path.abspath(relative_filepath)
+            song_info['filepath'] = absolute_filepath  # Update song_info with the downloaded filepath
+            self._log(f"Downloaded file path: {absolute_filepath}")
 
-            filepath = os.path.join(self.ytdl.prepare_filename(info))
-            song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
-
-            self._log(f"Successfully downloaded: {info['title']} into ${song_info['filepath']}", "INFO", logger=self.ytdl_logger)
+            self._log(f"Successfully downloaded: {info['title']} into {song_info['filepath']}", "INFO", logger=self.ytdl_logger)
             
             if song_info == self.current_song:
                 await self.play_next_song(self.ctx)

@@ -24,6 +24,7 @@ RUN pip install gunicorn
 
 # Copy application code and requirements
 COPY app/ /app/app/
+RUN mkdir -p /app/app/music
 COPY app/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
