@@ -31,4 +31,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8080
 
 # Start the application using Gunicorn and run the Discord bot
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 6 --timeout 0 app.main:app --preload
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 6 --timeout 0 --worker-class uvicorn.workers.UvicornWorker app.main:app --preload
