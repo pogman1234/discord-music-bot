@@ -151,22 +151,31 @@ class MusicBot:
                           filepath=self.current_song.filepath)
         self.current_song = None
 
-    async def add_to_queue(self, url: str, requested_by: str) -> Song:
-        """Enhanced add to queue with more metadata"""
-        info = await self.loop.run_in_executor(
-            self.thread_pool, 
-            lambda: self.ytdl.extract_info(url, download=False)
-        )
-        
-        song = Song(
-            title=info['title'],
-            url=url,
-            duration=str(info.get('duration', 'Unknown')),
-            thumbnail=info.get('thumbnail'),
-            requested_by=requested_by
-        )
-        self.queue.append(song)
-        return song
+    async def add_to_queue(self, url: str) -> Optional[Dict]:
+        """Adds a song to the queue and returns song info"""
+        try:
+            info = await self.loop.run_in_executor(
+                None,
+                lambda: self.ytdl.extract_info(url, download=False)
+            )
+            
+            if 'entries' in info:
+                info = info['entries'][0]
+                
+            song = Song(
+                url=info['url'],
+                title=info['title'],
+                duration=info['duration'],
+                thumbnail=info.get('thumbnail'),
+                webpage_url=info.get('webpage_url', url)
+            )
+            
+            self.queue.append(song)
+            return song.to_dict()
+            
+        except Exception as e:
+            self.discord_logger.error(f"Error adding song to queue: {str(e)}")
+            return None
 
     async def search_and_download_song(self, query):
         try:
