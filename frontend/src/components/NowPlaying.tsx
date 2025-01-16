@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 
-interface NowPlayingProps {}
-
-const NowPlaying: React.FC<NowPlayingProps> = () => {
+const NowPlaying: React.FC = () => {
   const [nowPlaying, setNowPlaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch('/api/nowplaying'); // This is the critical part
+        const response = await fetch('/api/nowplaying');  // Use relative URL
         const data = await response.json();
 
         if (response.ok) {

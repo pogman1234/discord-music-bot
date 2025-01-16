@@ -12,10 +12,7 @@ FROM python:3.9-slim-buster
 
 RUN apt-get update && \
     apt-get install -y \
-    ffmpeg \
-    python3-pip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg
 
 # Set environment variables for Cloud Run
 ENV PORT=8080
