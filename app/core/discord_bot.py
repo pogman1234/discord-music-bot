@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
+from .bot import MusicBot  # Import the MusicBot class
 
 logger = logging.getLogger('discord-music-bot')
 
