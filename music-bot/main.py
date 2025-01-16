@@ -8,7 +8,6 @@ import logging
 import asyncio
 from bot import MusicBot  # Import MusicBot
 from googleapiclient.discovery import build
-import threading
 import json
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -127,7 +126,7 @@ async def ping(interaction: discord.Interaction):
 
 # --- Load Cogs ---
 async def load_cogs():
-    for filename in os.listdir("./music-bot/src/commands"):
+    for filename in os.listdir("./music-bot/commands"):
         if filename.endswith(".py"):
             extension = filename[:-3]
             try:
