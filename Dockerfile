@@ -1,18 +1,26 @@
 # Stage 1: Build the frontend
 FROM node:20-alpine AS frontend-build
-WORKDIR /frontend  # Work directory is now /frontend
+WORKDIR /frontend
+
+# Copy package.json and package-lock.json
 COPY frontend/package.json frontend/package-lock.json ./
+
+# Install dependencies
 RUN npm ci
+
+# Copy the rest of the frontend code
 COPY frontend/ ./
-RUN npm run build
+
+# Build the frontend using Vite
+RUN npx vite build
 
 # Stage 2: Build the backend (Combined with final stage)
 FROM python:3.9-slim
 
 WORKDIR /  # Set working directory to root
 
-# Copy the built frontend
-COPY --from=frontend-build /frontend/build /frontend/build
+# Copy the built frontend from the previous stage
+COPY --from=frontend-build /frontend/dist /frontend
 
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg

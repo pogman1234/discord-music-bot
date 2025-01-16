@@ -76,7 +76,7 @@ youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 app = FastAPI()
 
 # Serve the React static files
-app.mount("/", StaticFiles(directory="/app/frontend/build", html=True), name="static")
+app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
 
 # CORS configuration
 origins = [
