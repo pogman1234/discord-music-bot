@@ -14,6 +14,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 
+from routes import currently_playing
+from routes import queue
+
+
 # --- Load environment variables ---
 load_dotenv()
 
@@ -75,9 +79,8 @@ youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 app = FastAPI()
 
 # CORS configuration (adjust origins as needed for your frontend)
-origins = [
-    "http://localhost:3000",  # Example: Allow requests from a local frontend
-    "https://your-frontend-cloud-run-url.a.run.app", # Replace with your frontend's URL
+origins = [ 
+    "https://poggles-discord-bot-235556599709.us-east1.run.app"
 ]
 
 app.add_middleware(
@@ -93,11 +96,8 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok"}
 
-# Song information endpoint
-@app.get("/api/currently-playing")
-async def currently_playing():
-    song_info = bot.music_bot.get_currently_playing()
-    return {"song": song_info}
+app.include_router(currently_playing.init_router(bot))
+app.include_router(queue.init_router(bot))
 
 # --- Event: on_ready ---
 @bot.event

@@ -11,6 +11,28 @@ import time
 from googleapiclient.discovery import build
 import os
 import logging
+from dataclasses import dataclass
+from typing import Optional, List, Dict
+from datetime import datetime
+
+@dataclass
+class Song:
+    title: str
+    url: str
+    duration: str
+    thumbnail: Optional[str] = None
+    requested_by: Optional[str] = None
+    added_at: datetime = datetime.now()
+
+    def to_dict(self) -> Dict:
+        return {
+            "title": self.title,
+            "url": self.url,
+            "duration": self.duration,
+            "thumbnail": self.thumbnail,
+            "requested_by": self.requested_by,
+            "added_at": self.added_at.isoformat()
+        }
 
 class MusicBot:
     def __init__(self, bot, youtube):
@@ -35,7 +57,7 @@ class MusicBot:
             'options': '-vn'
         }
         self.ytdl = YoutubeDL(self.ytdl_options)
-        self.queue = deque()
+        self.queue = deque()  # Will now store Song objects
         self.current_song = None
         self.loop = asyncio.get_event_loop()
         self.thread_pool = ThreadPoolExecutor(max_workers=3)
@@ -75,21 +97,21 @@ class MusicBot:
             return
 
         self.current_song = self.queue.popleft()
-        self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger,
-                  url=self.current_song['url'])
+        self._log(f"Playing next song: {self.current_song.title}", "INFO", logger=self.discord_logger,
+                  url=self.current_song.url)
 
         # Log the filepath before creating FFmpegPCMAudio source
-        self._log(f"Attempting to play from: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
+        self._log(f"Attempting to play from: {self.current_song.filepath}", "DEBUG", logger=self.discord_logger)
 
         try:
-            source = discord.FFmpegPCMAudio(self.current_song['filepath'], **self.ffmpeg_options)
+            source = discord.FFmpegPCMAudio(self.current_song.filepath, **self.ffmpeg_options)
         except discord.errors.ClientException as e:
             self._log(f"Error creating FFmpegPCMAudio source: {e}", "ERROR", logger=self.discord_logger)
             await ctx.send("An error occurred while preparing the song for playback.")
             return
 
         source.volume = self.volume
-        self.current_song['source'] = source
+        self.current_song.source = source
 
         def after_callback(error):
             if error:
@@ -120,41 +142,31 @@ class MusicBot:
             asyncio.run_coroutine_threadsafe(self.play_next_song(ctx), self.loop)
 
     def cleanup_current_song(self):
-        if self.current_song and os.path.exists(self.current_song['filepath']):
+        if self.current_song and os.path.exists(self.current_song.filepath):
             try:
-                # os.remove(self.current_song['filepath']) # No need to remove file
-                self._log(f"Removed file: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
+                # os.remove(self.current_song.filepath) # No need to remove file
+                self._log(f"Removed file: {self.current_song.filepath}", "DEBUG", logger=self.discord_logger)
             except Exception as e:
                 self._log(f"Error removing file: {e}", "ERROR", logger=self.discord_logger,
-                          filepath=self.current_song['filepath'])
+                          filepath=self.current_song.filepath)
         self.current_song = None
 
-    async def add_to_queue(self, ctx, query):
-        if 'playlist' in query.lower() or 'list' in query.lower():
-            self._log(f"Playlists are not supported with YouTube API search, using yt_dlp instead: {query}",
-                      "WARNING", logger=self.discord_logger)
-            info = await self.extract_playlist_info(query)
-            if 'entries' in info:
-                for entry in info['entries']:
-                    song_info = await self.download_song(entry['url'])
-                    if song_info:
-                        self.queue.append(song_info)
-                self._log(f"Added {len(info['entries'])} songs from playlist to the queue.", "INFO",
-                          logger=self.discord_logger)
-            else:
-                self._log("No entries found in playlist", "WARNING", logger=self.discord_logger)
-        else:
-            song_info = await self.search_and_download_song(query)
-            self._log(f"Song info in add_to_queue: {song_info}", "DEBUG", logger=self.discord_logger)  # Log song_info
-            if song_info:
-                self.queue.append(song_info)
-                self._log(f"Added song to queue: {song_info['title']}", "INFO", logger=self.discord_logger,
-                          url=song_info['url'])
-
-        if not self.is_playing(ctx) and not self.current_song:
-            await self.play_next_song(ctx)
-
-        return song_info
+    async def add_to_queue(self, url: str, requested_by: str) -> Song:
+        """Enhanced add to queue with more metadata"""
+        info = await self.loop.run_in_executor(
+            self.thread_pool, 
+            lambda: self.ytdl.extract_info(url, download=False)
+        )
+        
+        song = Song(
+            title=info['title'],
+            url=url,
+            duration=str(info.get('duration', 'Unknown')),
+            thumbnail=info.get('thumbnail'),
+            requested_by=requested_by
+        )
+        self.queue.append(song)
+        return song
 
     async def search_and_download_song(self, query):
         try:
@@ -250,10 +262,29 @@ class MusicBot:
     def get_currently_playing(self):
         """Returns the title of the currently playing song or None if not playing."""
         if self.current_song:
-            return self.current_song['title']
+            return self.current_song.title
         return None
     
     def is_playing(self, ctx):
         """Checks if the bot is currently playing audio in the guild."""
         voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
         return voice_client and voice_client.is_playing()
+
+    def get_queue_info(self) -> List[Dict]:
+        """Returns formatted information about all songs in queue"""
+        return [song.to_dict() for song in self.queue]
+
+    def get_current_song(self) -> Optional[Dict]:
+        """Returns information about currently playing song"""
+        if self.current_song:
+            return self.current_song.to_dict()
+        return None
+
+    def get_queue_position(self) -> int:
+        """Returns current position in queue"""
+        if not self.current_song:
+            return 0
+        try:
+            return list(self.queue).index(self.current_song)
+        except ValueError:
+            return 0
