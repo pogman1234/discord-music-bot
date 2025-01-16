@@ -4,7 +4,7 @@ import json
 import logging
 import sys
 import signal
-
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -115,6 +115,8 @@ async def main():
         [discord_task],
         return_when=asyncio.FIRST_COMPLETED,
     )
+    
+app.mount("/", StaticFiles(directory="/app/frontend/build", html=True), name="static")
 
 # Entry point for Gunicorn (and allows local testing)
 if __name__ == "__main__":
