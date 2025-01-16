@@ -9,9 +9,9 @@ RUN npm run build
 # Stage 2: Build the backend 
 FROM python:3.9-slim AS backend-build 
 WORKDIR /app 
-COPY music-bot/requirements.txt . 
+COPY music_bot/requirements.txt . 
 RUN pip install --no-cache-dir -r requirements.txt 
-COPY music-bot/ ./ 
+COPY music_bot/ ./ 
 
 # Stage 3: Final stage 
 FROM python:3.9-slim 
@@ -27,7 +27,7 @@ COPY --from=backend-build /app /app
 RUN apt-get update && apt-get install -y ffmpeg 
 
 # Install Python dependencies 
-COPY music-bot/requirements.txt . 
+COPY music_bot/requirements.txt . 
 RUN pip install --no-cache-dir -r requirements.txt 
 
 # Create a non-root user and group with a specific UID and GID 
