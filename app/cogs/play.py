@@ -2,12 +2,12 @@ import discord
 from discord.ext import commands
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('discord-music-bot')
 
 class PlayCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.music_bot = bot.get_cog("MusicBot")
+        self.music_bot = bot.music_bot  # Ensure consistent access to music_bot
 
     @commands.command(name="play")
     async def play(self, ctx, *, arg):
