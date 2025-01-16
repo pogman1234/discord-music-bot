@@ -223,7 +223,8 @@ class MusicBot:
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
-            filepath = os.path.join(self.ytdl.prepare_filename(info))
+            # Get the absolute path of the downloaded file
+            filepath = os.path.abspath(self.ytdl.prepare_filename(info))
             song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
 
             self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
