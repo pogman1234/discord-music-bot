@@ -7,10 +7,9 @@ import time
 
 logger = logging.getLogger('discord')
 
-class QueueCog(commands.Cog):
+class Queue(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.music_bot = bot.music_bot
 
     @app_commands.command(name="queue", description="Displays the current song queue")
     async def queue(self, interaction: discord.Interaction):
@@ -18,15 +17,15 @@ class QueueCog(commands.Cog):
         try:
             await interaction.response.defer()
 
-            if not self.music_bot.queue:
+            if not self.bot.music_bot.queue:
                 self._log(f"'queue' command used by {interaction.user} in {interaction.guild} - Queue is empty", "INFO")
                 await interaction.followup.send("The queue is empty.")
                 return
 
             queue_list = ""
-
+            
             # Safely copy items from the queue to a list (no need to modify the queue directly)
-            queue_items = list(self.music_bot.queue)  # Access the deque directly
+            queue_items = list(self.bot.music_bot.queue)  # Access the deque directly
             for i, song_info in enumerate(queue_items):
                 queue_list += f"{i+1}. [{song_info['title']}]({song_info['url']})\n"
 
@@ -49,4 +48,4 @@ class QueueCog(commands.Cog):
 
 async def setup(bot):
     logger.info("Loading queue cog")
-    await bot.add_cog(QueueCog(bot))
+    await bot.add_cog(Queue(bot))

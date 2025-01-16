@@ -5,23 +5,24 @@ import logging
 
 logger = logging.getLogger('discord')
 
-class PlayCog(commands.Cog):
+class Play(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.music_bot = bot.music_bot
 
     @app_commands.command(name="play", description="Plays audio from a YouTube URL or search term")
     async def play(self, interaction: discord.Interaction, *, arg: str):
         """Plays audio from a YouTube URL or search term."""
         await interaction.response.defer()
 
-        if not interaction.user.voice:
+        ctx = await self.bot.get_context(interaction)
+
+        if not ctx.author.voice:
             await interaction.followup.send("You are not connected to a voice channel!")
             return
 
-        voice_channel = interaction.user.voice.channel
+        voice_channel = ctx.author.voice.channel
 
-        voice_client = interaction.guild.voice_client
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
         if voice_client is None:
             logger.info(f"Connecting to voice channel: {voice_channel.name}")
             voice_client = await voice_channel.connect()
@@ -31,8 +32,7 @@ class PlayCog(commands.Cog):
 
         # Add to queue (only add to queue here)
         logger.info(f"Adding to queue: {arg}")
-        ctx = await self.bot.get_context(interaction) # Create ctx from interaction
-        song_info = await self.music_bot.add_to_queue(ctx, arg)
+        song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
 
         if song_info:
             logger.info(f"Song info: {song_info}")
@@ -54,10 +54,10 @@ class PlayCog(commands.Cog):
             logger.error("Error: song_info is None")
             await interaction.followup.send("An error occurred while processing the song.")
 
-    def is_playing(self, interaction: discord.Interaction):
-        voice_client = interaction.guild.voice_client
+    def is_playing(self, ctx):
+        voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
         return voice_client and voice_client.is_playing()
 
 async def setup(bot):
     logger.info("Loading play cog")
-    await bot.add_cog(PlayCog(bot))
+    await bot.add_cog(Play(bot))

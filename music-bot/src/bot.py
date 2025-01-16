@@ -1,24 +1,23 @@
 import asyncio
 import discord
+import subprocess
+from discord.ext import commands
 from yt_dlp import YoutubeDL
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 import functools
 import json
 import time
+from googleapiclient.discovery import build
 import os
 import logging
-import subprocess
 
 class MusicBot:
     def __init__(self, bot, youtube):
         self.bot = bot
-        self.download_dir = os.path.abspath("music")  # Ensure the download directory is an absolute path
-        os.makedirs(self.download_dir, exist_ok=True)  # Create the directory if it doesn't exist
-
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': os.path.join(self.download_dir, '%(extractor)s-%(id)s-%(title)s.%(ext)s'),
+            'outtmpl': os.path.join('music', '%(extractor)s-%(id)s-%(title)s.%(ext)s'),
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
@@ -42,6 +41,7 @@ class MusicBot:
         self.thread_pool = ThreadPoolExecutor(max_workers=3)
         self.volume = 0.5
         self.youtube = youtube
+        self.download_dir = "music"
         self.max_concurrent_downloads = 4
         self.currently_downloading = set()
 
@@ -50,6 +50,8 @@ class MusicBot:
         self.ytdl_logger.setLevel(logging.INFO)
         self.discord_logger = logging.getLogger('discord')
         self.discord_logger.setLevel(logging.INFO)
+
+        os.makedirs(self.download_dir, exist_ok=True)
 
     def _log(self, message, severity="INFO", logger=None, **kwargs):
         entry = {
@@ -94,39 +96,59 @@ class MusicBot:
         self.currently_downloading.discard(self.current_song['url'])
         asyncio.run_coroutine_threadsafe(self.trigger_next_download(), self.loop)
 
-    async def play_song(self, filepath):
-        """Plays a song using ffmpeg."""
-        self._log(f"Playing song from: {filepath}", "INFO", logger=self.ytdl_logger)
-
-        # Use ffmpeg to play the song
-        ffmpeg_command = [
-            'ffmpeg',
-            '-i', filepath,
-            '-f', 's16le',
-            '-ar', '48000',
-            '-ac', '2',
-            'pipe:1'
-        ]
-
-        process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE)
-        self.bot.voice_client.play(discord.FFmpegPCMAudio(process.stdout))
-
     async def play_next_song(self, ctx):
-        """Plays the next song in the queue using ffmpeg."""
-        if self.queue:
-            next_song = self.queue.popleft()
-            self.current_song = next_song
+        self.ctx = ctx  # Store context for use in after_callback
 
-            # Log the file path
-            self._log(f"Playing song from: {next_song['filepath']}", "INFO", logger=self.ytdl_logger)
-
-            # Play the song using ffmpeg
-            await self.play_song(next_song['filepath'])
-
-            await ctx.send(f"Now playing: {next_song['title']}")
-        else:
+        if not self.queue:
             self.current_song = None
-            await ctx.send("Queue is empty.")
+            self._log("Queue is empty, nothing to play.", "INFO", logger=self.discord_logger)
+            return
+
+        self.current_song = self.queue.popleft()
+        self._log(f"Playing next song: {self.current_song['title']}", "INFO", logger=self.discord_logger,
+                 url=self.current_song['url'])
+
+        # Check if the song is already downloaded before attempting to play
+        if self.current_song['filepath'] is None:
+            self._log(f"Song not yet downloaded, triggering download: {self.current_song['title']}", "INFO", logger=self.discord_logger)
+            await self.trigger_download_for_current_song()
+            return  # Return and rely on trigger_download_for_current_song to call play_next_song again
+
+        # Log the filepath before creating FFmpegPCMAudio source
+        self._log(f"Attempting to play from: {self.current_song['filepath']}", "DEBUG", logger=self.discord_logger)
+
+        try:
+            source = discord.FFmpegPCMAudio(self.current_song['filepath'], **self.ffmpeg_options)
+        except discord.errors.ClientException as e:
+            self._log(f"Error creating FFmpegPCMAudio source: {e}", "ERROR", logger=self.discord_logger)
+            await ctx.send("An error occurred while preparing the song for playback.")
+            return
+
+        source.volume = self.volume
+        self.current_song['source'] = source
+
+        def after_callback(error):
+            if error:
+                self._log(f"Playback error: {error}", "ERROR", logger=self.discord_logger)
+
+            # Schedule cleanup to run in the event loop
+            self.loop.call_soon_threadsafe(self.cleanup_current_song)
+
+            # Schedule play_next_song to run in the event loop if there are songs in the queue
+            if self.queue:
+                coro = self.play_next_song(self.ctx)  # Pass the context
+                asyncio.run_coroutine_threadsafe(coro, self.loop)
+
+        if ctx.voice_client:
+            try:
+                ctx.voice_client.play(
+                    source,
+                    after=lambda e: after_callback(e)  # Correctly pass 'e' to after_callback
+                )
+            except discord.errors.ClientException as e:
+                self._log(f"Error during playback: {e}", "ERROR", logger=self.discord_logger)
+                await ctx.send("An error occurred during playback.")
+                return
 
     async def add_to_queue(self, ctx, query):
         if 'playlist' in query.lower() or 'list' in query.lower():
@@ -194,7 +216,7 @@ class MusicBot:
             self._log(f"Error searching with YouTube API: {e}", "ERROR", logger=self.discord_logger, query=query)
             return None
 
-    async def download_song(self, song_info, ctx):
+    async def download_song(self, song_info):
         """Downloads a song using yt_dlp in a background thread."""
         url = song_info['url']
         try:
@@ -204,19 +226,13 @@ class MusicBot:
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
 
-            # Get the absolute path of the downloaded file
-            filepath = os.path.abspath(self.ytdl.prepare_filename(info))
+            filepath = os.path.join(self.ytdl.prepare_filename(info))
             song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
 
             self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-            self._log(f"File saved at: {filepath}", "INFO", logger=self.ytdl_logger)
-
-            # List the directory contents
-            dir_contents = subprocess.check_output(['ls', '-lrt', os.path.dirname(filepath)])
-            self._log(f"Directory contents:\n{dir_contents.decode()}", "DEBUG", logger=self.ytdl_logger)
-
+            
             if song_info == self.current_song:
-                await self.play_next_song(ctx)
+                await self.play_next_song(self.ctx)
                 
             return song_info  # Return updated song_info
 
@@ -314,9 +330,3 @@ class MusicBot:
         except Exception as e:
             self._log(f"Error extracting playlist info: {e}", "ERROR", logger=self.ytdl_logger, url=url)
             return None
-
-    async def add_song_to_queue(self, url, ctx):
-        """Adds a song to the queue and starts downloading it."""
-        song_info = {'url': url}
-        self.queue.append(song_info)
-        await self.download_song(song_info, ctx)
