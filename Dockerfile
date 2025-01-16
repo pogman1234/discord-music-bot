@@ -9,9 +9,9 @@ RUN npm run build
 # Stage 2: Build the backend
 FROM python:3.9-slim AS backend-build
 WORKDIR /app/musicbot
-COPY musicbot/requirements.txt .
+COPY music-bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY musicbot/ ./
+COPY music-bot/ ./
 
 # Stage 3: Final stage
 FROM python:3.9-slim
