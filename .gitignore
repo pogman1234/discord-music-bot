@@ -1,3 +1,4 @@
+node_modules/
 .env
 .venv
 __pycache__/
@@ -5,3 +6,6 @@ __pycache__/
 discord.log
 cookies.txt
 music/
+.DS_Store
+frontend/.react-router/
+/build/

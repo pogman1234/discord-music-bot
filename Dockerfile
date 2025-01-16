@@ -1,24 +1,32 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
+# Stage 1: Build the frontend
+FROM node:20-alpine AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
 
-# Set the working directory in the container
+# Stage 2: Build the backend
+FROM python:3.9-slim AS backend-build
+WORKDIR /app/musicbot
+COPY musicbot/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY musicbot/ ./
+
+# Stage 3: Final stage
+FROM python:3.9-slim
 WORKDIR /app
+
+# Copy the built frontend
+COPY --from=frontend-build /app/frontend/dist /app/frontend/build
+
+# Copy the backend
+COPY --from=backend-build /app/musicbot /app/musicbot
 
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Create the music directory
-RUN mkdir -p /app/music
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Create a non-root user and group with a specific UID and GID
-# Using a specific UID and GID helps with consistency and security, especially
-# when mounting volumes from the host system.
 ARG UID=1001
 ARG GID=1001
 RUN groupadd -g ${GID} appgroup && \
@@ -37,5 +45,5 @@ EXPOSE 8080
 ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
 ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
 
-# Run main.py when the container launches
-CMD ["python", "music-bot/src/main.py"]
+# Run the FastAPI app
+CMD ["uvicorn", "musicbot.main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -10,7 +10,9 @@ from bot import MusicBot  # Import MusicBot
 from googleapiclient.discovery import build
 import threading
 import json
-from flask import Flask, render_template
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import sys
 
 # --- Load environment variables ---
@@ -70,17 +72,36 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=inten
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)  # Create youtube client here
 
-# --- Flask Setup for Health Check and Frontend ---
-app = Flask(__name__, template_folder='/app/templates')
+# --- FastAPI Setup for Health Check and Frontend ---
+app = FastAPI()
 
-@app.route("/healthz")
-def health_check():
+# Serve the React static files
+app.mount("/", StaticFiles(directory="/app/frontend/build", html=True), name="static")
+
+# CORS configuration
+origins = [
+    "http://localhost:3000",  # React development server
+    "https://poggles-discord-bot-235556599709.us-east1.run.app",  # Deployed React app
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Health check endpoint
+@app.get("/healthz")
+async def health_check():
     return {"status": "ok"}
 
-@app.route("/")
-def index():
+# Song information endpoint
+@app.get("/api/currently-playing")
+async def currently_playing():
     song_info = bot.music_bot.get_currently_playing()
-    return render_template("index.html", song=song_info)
+    return {"song": song_info}
 
 # --- Event: on_ready ---
 @bot.event
@@ -120,14 +141,10 @@ async def start_bot():
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 
-# --- Start Bot and Flask App ---
-async def main():
-    # Run Flask app in a separate thread
-    flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))))
-    flask_thread.daemon = True
-    flask_thread.start()
-    
-    await start_bot()
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(start_bot())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

@@ -1,3 +1,7 @@
 .env
 .venv
 music/
+.react-router
+build
+/frontend/node_modules
+README.md
