@@ -30,29 +30,19 @@ class Play(commands.Cog):
             logger.info(f"Moving to voice channel: {voice_channel.name}")
             await voice_client.move_to(voice_channel)
 
-        # Add to queue (only add to queue here)
+        # Add to queue (passing arg instead of ctx)
         logger.info(f"Adding to queue: {arg}")
-        song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
+        try:
+            song_info = await self.bot.music_bot.add_to_queue(arg)
 
-        if song_info:
-            logger.info(f"Song info: {song_info}")
-
-            # Send "Added to queue" message with clickable title
-            embed = discord.Embed(title="Added to Queue", description=f"[{song_info['title']}]({song_info['url']})", color=discord.Color.green())
-
-            # Get the video thumbnail
-            try:
-                video_id = song_info['url'].split("watch?v=")[1]
-                thumbnail_url = f"https://img.youtube.com/vi/{video_id}/0.jpg"
-                embed.set_thumbnail(url=thumbnail_url)
-            except Exception as e:
-                logger.error(f"Error getting thumbnail: {e}")
-
-            await interaction.followup.send(embed=embed)
-
-        else:
-            logger.error("Error: song_info is None")
-            await interaction.followup.send("An error occurred while processing the song.")
+            if song_info:
+                logger.info(f"Song info: {song_info}")
+                await interaction.followup.send(f"Added to queue: {song_info['title']}")
+            else:
+                await interaction.followup.send("Could not find that song.")
+        except Exception as e:
+            logger.error(f"Error playing song: {str(e)}")
+            await interaction.followup.send("An error occurred while trying to play that song.")
 
     def is_playing(self, ctx):
         voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
