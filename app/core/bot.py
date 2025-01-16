@@ -226,7 +226,7 @@ class MusicBot:
             filepath = os.path.join(self.ytdl.prepare_filename(info))
             song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
 
-            self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
+            self._log(f"Successfully downloaded: {info['title']} into ${song_info['filepath']}", "INFO", logger=self.ytdl_logger)
             
             if song_info == self.current_song:
                 await self.play_next_song(self.ctx)
