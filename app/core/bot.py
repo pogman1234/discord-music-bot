@@ -13,10 +13,17 @@ import subprocess
 
 class MusicBot:
     def __init__(self, bot, youtube):
+        """
+        Initializes the MusicBot with the given bot and YouTube API client.
+        
+        Args:
+            bot (discord.Client): The Discord bot instance.
+            youtube (googleapiclient.discovery.Resource): The YouTube API client.
+        """
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': os.path.join('music', '%(extractor)s-%(id)s-%(title)s.%(ext)s'),
+            'outtmpl': os.path.join(os.path.abspath('/app/music'), '%(extractor)s-%(id)s-%(title)s.%(ext)s'),
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
@@ -40,7 +47,7 @@ class MusicBot:
         self.thread_pool = ThreadPoolExecutor(max_workers=3)
         self.volume = 0.5
         self.youtube = youtube
-        self.download_dir = "music"
+        self.download_dir = os.path.abspath("music")
         self.max_concurrent_downloads = 4
         self.currently_downloading = set()
 
@@ -216,18 +223,28 @@ class MusicBot:
             return None
 
     async def download_song(self, song_info):
-        """Downloads a song using yt_dlp in a background thread."""
+        """
+        Downloads a song using yt_dlp in a background thread.
+
+        Args:
+            song_info (dict): A dictionary containing the song information, including the URL.
+
+        Updates:
+            song_info (dict): Updates the dictionary with the filepath of the downloaded song.
+
+        Returns:
+            dict: The updated song_info dictionary with the filepath of the downloaded song, or None if an error occurs.
+        """
         url = song_info['url']
         try:
             self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
 
-            # Use run_in_executor to run yt_dlp's synchronous download process in a separate thread
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
             self._log(f"Current working directory: {os.getcwd()}")
             relative_filepath = self.ytdl.prepare_filename(info)
             absolute_filepath = os.path.abspath(relative_filepath)
-            song_info['filepath'] = absolute_filepath  # Update song_info with the downloaded filepath
+            song_info['filepath'] = absolute_filepath
             self._log(f"Downloaded file path: {absolute_filepath}")
 
             self._log(f"Successfully downloaded: {info['title']} into {song_info['filepath']}", "INFO", logger=self.ytdl_logger)
@@ -235,7 +252,7 @@ class MusicBot:
             if song_info == self.current_song:
                 await self.play_next_song(self.ctx)
                 
-            return song_info  # Return updated song_info
+            return song_info
 
         except Exception as e:
             self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
