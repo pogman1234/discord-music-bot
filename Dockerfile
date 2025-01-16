@@ -1,22 +1,7 @@
-# Stage 1: Build the frontend
-FROM node:20-alpine AS frontend-build
-WORKDIR /frontend
 
-COPY frontend/package.json frontend/package-lock.json ./
-
-RUN npm ci
-
-COPY frontend/ ./
-# Build the frontend using Vite
-RUN npm run build
-
-# Stage 2: Build the backend (Combined with final stage)
 FROM python:3.9-slim
 
 WORKDIR /music_bot
-
-# Copy the built frontend from the previous stage
-COPY --from=frontend-build /frontend/build /frontend/build/
 
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
@@ -35,7 +20,7 @@ RUN groupadd -g ${GID} appgroup && \
     useradd -u ${UID} -g appgroup -m -s /bin/bash appuser
 
 # Change ownership
-RUN chown -R appuser:appgroup /frontend /music_bot
+RUN chown -R appuser:appgroup /music_bot
 
 # Switch to the new user
 USER appuser

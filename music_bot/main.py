@@ -11,7 +11,6 @@ from bot import MusicBot
 from googleapiclient.discovery import build
 import json
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 
@@ -72,16 +71,13 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or("/"), intents=inten
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-# --- FastAPI Setup for Health Check and Frontend ---
+# --- FastAPI Setup for Health Check and API Endpoints ---
 app = FastAPI()
 
-# Serve the React static files
-app.mount("/", StaticFiles(directory="/frontend/build/server", html=True), name="static")
-
-# CORS configuration
+# CORS configuration (adjust origins as needed for your frontend)
 origins = [
-    "http://localhost:3000",
-    "https://poggles-discord-bot-235556599709.us-east1.run.app",
+    "http://localhost:3000",  # Example: Allow requests from a local frontend
+    "https://your-frontend-cloud-run-url.a.run.app", # Replace with your frontend's URL
 ]
 
 app.add_middleware(
