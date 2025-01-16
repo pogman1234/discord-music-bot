@@ -21,12 +21,12 @@ COPY --from=frontend-build /frontend/build /frontend
 # Install FFmpeg
 RUN apt-get update && apt-get install -y ffmpeg
 
-COPY music-bot/requirements.txt /music_bot/
+COPY music_bot/requirements.txt /music_bot/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /music_bot/requirements.txt
 
-COPY music-bot/ /music_bot/
+COPY music_bot/ /music_bot/
 
 # Create a non-root user
 ARG UID=1001
