@@ -194,7 +194,7 @@ class MusicBot:
             self._log(f"Error searching with YouTube API: {e}", "ERROR", logger=self.discord_logger, query=query)
             return None
 
-    async def download_song(self, song_info):
+    async def download_song(self, song_info, ctx):
         """Downloads a song using yt_dlp in a background thread."""
         url = song_info['url']
         try:
@@ -209,9 +209,14 @@ class MusicBot:
             song_info['filepath'] = filepath  # Update song_info with the downloaded filepath
 
             self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-            
+            self._log(f"File saved at: {filepath}", "INFO", logger=self.ytdl_logger)
+
+            # List the directory contents
+            dir_contents = subprocess.check_output(['ls', '-lrt', os.path.dirname(filepath)])
+            self._log(f"Directory contents:\n{dir_contents.decode()}", "DEBUG", logger=self.ytdl_logger)
+
             if song_info == self.current_song:
-                await self.play_next_song(self.ctx)
+                await self.play_next_song(ctx)
                 
             return song_info  # Return updated song_info
 
@@ -309,3 +314,9 @@ class MusicBot:
         except Exception as e:
             self._log(f"Error extracting playlist info: {e}", "ERROR", logger=self.ytdl_logger, url=url)
             return None
+
+    async def add_song_to_queue(self, url, ctx):
+        """Adds a song to the queue and starts downloading it."""
+        song_info = {'url': url}
+        self.queue.append(song_info)
+        await self.download_song(song_info, ctx)
