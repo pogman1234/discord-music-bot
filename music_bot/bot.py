@@ -274,8 +274,8 @@ class MusicBot:
             # Use subprocess to get more detailed FFmpeg output
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg',
-                '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
-                '-i', self.current_song.filepath + '.mp3',
+                '-reconnect', '3', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
+                '-i', self.current_song.filepath,
                 '-vn',
                 '-f', 's16le',
                 '-acodec', 'pcm_s16le',
