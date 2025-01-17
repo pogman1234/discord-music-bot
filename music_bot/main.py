@@ -123,14 +123,28 @@ async def ping(interaction: discord.Interaction):
 
 # --- Load Cogs ---
 async def load_cogs():
-    for filename in os.listdir("commands/"):
-        if filename.endswith(".py"):
+    commands_dir = "commands/"
+    logger.info(f"Scanning directory: {commands_dir}")
+    
+    # List all files in directory
+    try:
+        files = os.listdir(commands_dir)
+        logger.info(f"Found files: {files}")
+    except Exception as e:
+        logger.error(f"Failed to list commands directory: {e}")
+        return
+
+    # Load each Python file as a cog
+    for filename in files:
+        if filename.endswith(".py") and not filename.startswith("__"):
             extension = filename[:-3]
             try:
                 await bot.load_extension(f"commands.{extension}")
-                logger.info(f"Loaded cog: {extension}", extra={'cog': extension})
+                logger.info(f"Loaded cog: {extension}")
             except Exception as e:
-                logger.error(f"Failed to load cog {extension}: {e}", exc_info=True, extra={'cog': extension})
+                logger.error(f"Failed to load cog {extension}: {e}", exc_info=True)
+
+    logger.info("Finished loading cogs")
 
 async def start_bot():
     bot.music_bot = MusicBot(bot, youtube)

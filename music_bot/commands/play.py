@@ -30,10 +30,10 @@ class Play(commands.Cog):
             logger.info(f"Moving to voice channel: {voice_channel.name}")
             await voice_client.move_to(voice_channel)
 
-        # Add to queue (passing arg instead of ctx)
+        # Add to queue (passing both ctx and arg)
         logger.info(f"Adding to queue: {arg}")
         try:
-            song_info = await self.bot.music_bot.add_to_queue(arg)
+            song_info = await self.bot.music_bot.add_to_queue(ctx, arg)  # Pass both ctx and arg
 
             if song_info:
                 logger.info(f"Song info: {song_info}")
