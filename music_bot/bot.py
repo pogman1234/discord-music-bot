@@ -391,3 +391,76 @@ class MusicBot:
             except Exception as e:
                 self._log(f"Critical error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
                 await asyncio.sleep(5)  # Longer sleep on critical error
+
+    async def process_url_or_search(self, query: str) -> Optional[Dict]:
+        """Process a URL or search query to get song information"""
+        self._log(f"Processing query: {query}", "DEBUG", logger=self.ytdl_logger)
+        
+        try:
+            # Check if query is a URL
+            if any(domain in query.lower() for domain in ['youtube.com', 'youtu.be']):
+                # Use yt-dlp for URLs
+                self._log("Query appears to be URL, using yt-dlp", "DEBUG", logger=self.ytdl_logger)
+                info = await self.loop.run_in_executor(
+                    self.thread_pool,
+                    functools.partial(self.download_ytdl.extract_info, query, download=False)
+                )
+                
+                if not info:
+                    self._log("No info found from URL", "ERROR", logger=self.ytdl_logger)
+                    return None
+                    
+                return {
+                    'id': info['id'],
+                    'title': info['title'],
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail', ''),
+                    'webpage_url': info['webpage_url']
+                }
+                
+            else:
+                # Use YouTube API for search
+                self._log("Using YouTube API for search", "DEBUG", logger=self.ytdl_logger)
+                search_response = await self.loop.run_in_executor(
+                    self.thread_pool,
+                    lambda: self.youtube.search().list(
+                        q=query,
+                        part="snippet",
+                        type="video",
+                        maxResults=1
+                    ).execute()
+                )
+                
+                if not search_response.get('items'):
+                    self._log("No search results found", "WARNING", logger=self.ytdl_logger)
+                    return None
+                    
+                video = search_response['items'][0]
+                video_id = video['id']['videoId']
+                
+                # Get additional video details
+                video_response = await self.loop.run_in_executor(
+                    self.thread_pool,
+                    lambda: self.youtube.videos().list(
+                        part="contentDetails,snippet",
+                        id=video_id
+                    ).execute()
+                )
+                
+                if not video_response.get('items'):
+                    self._log("Could not get video details", "ERROR", logger=self.ytdl_logger)
+                    return None
+                    
+                video_info = video_response['items'][0]
+                
+                return {
+                    'id': video_id,
+                    'title': video_info['snippet']['title'],
+                    'duration': 0,  # Duration parsing could be added here
+                    'thumbnail': video_info['snippet']['thumbnails']['default']['url'],
+                    'webpage_url': f"https://www.youtube.com/watch?v={video_id}"
+                }
+                
+        except Exception as e:
+            self._log(f"Error processing query: {str(e)}", "ERROR", logger=self.ytdl_logger, exc_info=True)
+            return None
