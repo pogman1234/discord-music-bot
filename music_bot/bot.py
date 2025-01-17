@@ -337,23 +337,26 @@ class MusicBot:
 
                 async with self.queue_lock:
                     if self.queue and not self.is_playing:
-                        next_song = self.queue[0]
-                        self._log(f"Found next song in queue: {next_song.title}", "DEBUG", logger=self.discord_logger)
+                        next_song = self.queue.popleft()  # Get and remove from queue
+                        self._log(f"Processing next song: {next_song.title}", "DEBUG", logger=self.discord_logger)
 
                         if not next_song.is_downloaded:
-                            self._log("Starting download process", "DEBUG", logger=self.discord_logger)
                             download_success = await self.download_song(next_song)
-
                             if not download_success:
-                                self._log("Download failed, skipping song", "ERROR", logger=self.discord_logger)
-                                self.queue.popleft()
+                                self._log("Download failed", "ERROR", logger=self.discord_logger)
                                 continue
 
-                            self._log("Download successful, preparing playback", "DEBUG", logger=self.discord_logger)
+                        # Set current song before playing
+                        self.current_song = next_song
+                        self._log(f"Set current song: {self.current_song.title}", "DEBUG", logger=self.discord_logger)
 
-                        # Don't wait for play_task completion
-                        self._log("Creating play task", "DEBUG", logger=self.discord_logger)
-                        asyncio.create_task(self.play_next_song(ctx))
+                        # Start playback
+                        try:
+                            await self.play_next_song(ctx)
+                        except Exception as e:
+                            self._log(f"Playback error: {str(e)}", "ERROR", logger=self.discord_logger)
+                            self.is_playing = False
+                            self.current_song = None
 
                 await asyncio.sleep(1)
 
