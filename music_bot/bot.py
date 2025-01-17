@@ -354,19 +354,26 @@ class MusicBot:
             self._log("Queue processing cycle starting", "DEBUG", logger=self.discord_logger)
             if self.queue and not self.is_playing:
                 self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
+                
+                # Get the next song by peeking, don't remove until download succeeds
                 next_song = self.queue[0]
                 self._log(f"Next song in queue: {next_song.title}", "INFO", logger=self.discord_logger)
                 
+                # Only attempt download if not already downloaded
                 if not next_song.is_downloaded:
-                    self._log(f"Attempting to download: {next_song.title}", "INFO", logger=self.discord_logger)
+                    self._log(f"Starting download process for: {next_song.title}", "INFO", logger=self.ytdl_logger)
                     download_success = await self.download_song(next_song)
-                    self._log(f"Download success: {download_success}", "INFO", logger=self.discord_logger)
+                    
+                    if not download_success:
+                        self._log(f"Failed to download: {next_song.title}", "ERROR", logger=self.discord_logger)
+                        # Remove failed song and continue to next
+                        self.queue.popleft()
+                        continue
                 
-                if next_song.is_downloaded:
-                    self._log(f"Starting playback of: {next_song.title}", "INFO", logger=self.discord_logger)
-                    await self.play_next_song(ctx)
-                else:
-                    self._log(f"Failed to download: {next_song.title}", "ERROR", logger=self.discord_logger)
+                # If we get here, song is downloaded and ready to play
+                self._log(f"Starting playback of: {next_song.title}", "INFO", logger=self.discord_logger)
+                await self.play_next_song(ctx)
+                
             else:
                 self._log(f"Queue empty or already playing. Queue size: {len(self.queue)}, is_playing: {self.is_playing}", "DEBUG", logger=self.discord_logger)
             await asyncio.sleep(1)
