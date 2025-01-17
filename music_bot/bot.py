@@ -105,6 +105,10 @@ class MusicBot:
             'options': '-vn -b:a 192k',
         }
 
+        # Add to existing init
+        self.cache_max_age = 7 * 24 * 60 * 60  # 7 days in seconds
+        self.cache_max_size = 1024 * 1024 * 1024  # 1GB in bytes
+
     # Keep the logging method
     def _log(self, message, severity="DEBUG", logger=None, **kwargs):
         entry = {
@@ -151,6 +155,22 @@ class MusicBot:
         
         self._log(f"Download path: {abs_filepath}", "DEBUG", logger=self.ytdl_logger)
         self._log(f"Expected MP3 path: {mp3_filepath}", "DEBUG", logger=self.ytdl_logger)
+
+        # Check if file already exists
+        if os.path.exists(mp3_filepath):
+            try:
+                # Verify file is valid MP3
+                subprocess.run(['ffmpeg', '-v', 'quiet', '-i', mp3_filepath, '-f', 'null', '-'],
+                             check=True, capture_output=True)
+                
+                self._log(f"Using cached file: {mp3_filepath}", "INFO", logger=self.ytdl_logger)
+                song.filepath = mp3_filepath
+                song.is_downloaded = True
+                return True
+                
+            except subprocess.CalledProcessError:
+                self._log("Cached file corrupt, redownloading", "WARNING", logger=self.ytdl_logger)
+                os.remove(mp3_filepath)
 
         while song.download_retries < song.max_retries:
             try:
@@ -440,3 +460,33 @@ class MusicBot:
         except Exception as e:
             self._log(f"Error processing query: {str(e)}", "ERROR", logger=self.ytdl_logger, exc_info=True)
             return None
+
+    async def cleanup_cache(self):
+        """Removes old cache files"""
+        now = time.time()
+        total_size = 0
+        files = []
+        
+        for file in os.listdir(self.download_dir):
+            path = os.path.join(self.download_dir, file)
+            stats = os.stat(path)
+            age = now - stats.st_mtime
+            size = stats.st_size
+            files.append((path, age, size))
+            total_size += size
+
+        # Remove old files
+        for path, age, _ in files:
+            if age > self.cache_max_age:
+                os.remove(path)
+                self._log(f"Removed old cache file: {path}", "INFO", logger=self.ytdl_logger)
+
+        # Remove files if cache too large
+        if total_size > self.cache_max_size:
+            files.sort(key=lambda x: x[1])  # Sort by age
+            for path, _, _ in files:
+                os.remove(path)
+                self._log(f"Removed cache file due to size: {path}", "INFO", logger=self.ytdl_logger)
+                total_size = sum(os.path.getsize(f) for f in os.listdir(self.download_dir))
+                if total_size <= self.cache_max_size:
+                    break
