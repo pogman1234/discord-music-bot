@@ -100,7 +100,7 @@ class MusicBot:
 
         os.makedirs(self.download_dir, exist_ok=True)
 
-    def _log(self, message, severity="INFO", logger=None, **kwargs):
+    def _log(self, message, severity="DEBUG", logger=None, **kwargs):
         entry = {
             "message": message,
             "severity": severity,
@@ -351,32 +351,50 @@ class MusicBot:
     async def process_queue(self, ctx):
         """Processes the song queue, downloading and playing songs as needed"""
         while True:
-            self._log("Queue processing cycle starting", "DEBUG", logger=self.discord_logger)
-            if self.queue and not self.is_playing:
-                self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
+            try:
+                self._log("Queue processing cycle starting", "DEBUG", logger=self.discord_logger)
                 
-                # Get the next song by peeking, don't remove until download succeeds
-                next_song = self.queue[0]
-                self._log(f"Next song in queue: {next_song.title}", "INFO", logger=self.discord_logger)
-                
-                # Only attempt download if not already downloaded
-                if not next_song.is_downloaded:
-                    self._log(f"Starting download process for: {next_song.title}", "INFO", logger=self.ytdl_logger)
-                    download_success = await self.download_song(next_song)
+                # Check voice client first
+                if not ctx.voice_client or not ctx.voice_client.is_connected():
+                    self._log("Voice client not ready", "ERROR", logger=self.discord_logger)
+                    await asyncio.sleep(1)
+                    continue
                     
-                    if not download_success:
-                        self._log(f"Failed to download: {next_song.title}", "ERROR", logger=self.discord_logger)
-                        # Remove failed song and continue to next
+                if self.queue and not self.is_playing:
+                    self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
+                    
+                    next_song = self.queue[0]
+                    self._log(f"Processing next song: {next_song.title}", "DEBUG", logger=self.ytdl_logger)
+                    
+                    try:
+                        if not next_song.is_downloaded:
+                            self._log("Starting download...", "DEBUG", logger=self.ytdl_logger)
+                            download_success = await asyncio.wait_for(
+                                self.download_song(next_song),
+                                timeout=300  # 5 minute timeout
+                            )
+                            
+                            if not download_success:
+                                self._log("Download failed, removing song", "ERROR", logger=self.discord_logger)
+                                self.queue.popleft()
+                                continue
+                        
+                        self._log("Download complete, starting playback", "INFO", logger=self.discord_logger)
+                        self.is_playing = True  # Set flag before playing
+                        await self.play_next_song(ctx)
+                        
+                    except asyncio.TimeoutError:
+                        self._log("Operation timed out", "ERROR", logger=self.discord_logger)
                         self.queue.popleft()
-                        continue
+                    except Exception as e:
+                        self._log(f"Error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
+                        self.queue.popleft()
                 
-                # If we get here, song is downloaded and ready to play
-                self._log(f"Starting playback of: {next_song.title}", "INFO", logger=self.discord_logger)
-                await self.play_next_song(ctx)
+                await asyncio.sleep(1)
                 
-            else:
-                self._log(f"Queue empty or already playing. Queue size: {len(self.queue)}, is_playing: {self.is_playing}", "DEBUG", logger=self.discord_logger)
-            await asyncio.sleep(1)
+            except Exception as e:
+                self._log(f"Critical error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
+                await asyncio.sleep(5)  # Longer sleep on critical error
 
     def get_queue(self, guild_id: int = None) -> List[Song]:
         """Get the current song queue for a guild"""
