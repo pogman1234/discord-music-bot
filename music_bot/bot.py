@@ -18,12 +18,14 @@ from datetime import datetime
 class Song:
     def __init__(self, url, title, duration, thumbnail, video_id):
         self.url = url
-        self.video_id = video_id  # Extracted from URL or provided directly
+        self.video_id = video_id
         self.title = self._sanitize_filename(title)
         self.duration = duration
         self.thumbnail = thumbnail
-        self.filepath = f"music/{self.video_id}.mp3"
+        self.filepath = os.path.join("music", f"{self.video_id}.mp3")  # Use os.path.join
         self.is_downloaded = False
+        self.download_retries = 0
+        self.max_retries = 3
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -120,7 +122,11 @@ class MusicBot:
         self._log(f"Playing next song: {self.current_song.title}", "INFO", logger=self.discord_logger)
 
         if not self.current_song.is_downloaded:
-          await self.download_song(self.current_song)
+            download_success = await self.download_song(self.current_song)
+            if not download_success:
+                await ctx.send(f"Failed to download: {self.current_song.title}")
+                await self.play_next_song(ctx)
+                return
 
         if not hasattr(self.current_song, 'filepath') or not self.current_song.filepath or not os.path.exists(self.current_song.filepath):
             self._log("Song filepath not found or invalid", "ERROR", logger=self.discord_logger)
@@ -226,23 +232,41 @@ class MusicBot:
             raise
 
     async def download_song(self, song: Song):
-        """Downloads a song using yt-dlp and updates the Song object"""
-        try:
-            self._log(f"Downloading song: {song.title} (URL: {song.url})", "INFO", logger=self.ytdl_logger)
-
-            # Download using yt-dlp directly to the correct path
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-              self.thread_pool, 
-              functools.partial(self.ytdl.download, [song.url])
-            )
-
-            song.is_downloaded = True
-            self._log(f"Download successful: {song.title}", "INFO", logger=self.ytdl_logger)
-
-        except Exception as e:
-            self._log(f"Download error: {str(e)}", "ERROR", logger=self.ytdl_logger, exc_info=True)
-            song.is_downloaded = False
+        """Downloads a song using yt-dlp with retry mechanism"""
+        while song.download_retries < song.max_retries:
+            try:
+                self._log(f"Downloading song: {song.title} (URL: {song.url})", "INFO", logger=self.ytdl_logger)
+                
+                # Ensure download directory exists
+                os.makedirs(self.download_dir, exist_ok=True)
+                
+                # Download using yt-dlp
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    self.thread_pool,
+                    functools.partial(self.ytdl.download, [song.url])
+                )
+                
+                # Verify file exists after download
+                if os.path.exists(song.filepath):
+                    song.is_downloaded = True
+                    self._log(f"Download successful: {song.title}", "INFO", logger=self.ytdl_logger)
+                    return True
+                else:
+                    raise FileNotFoundError(f"Downloaded file not found at {song.filepath}")
+                    
+            except Exception as e:
+                song.download_retries += 1
+                self._log(
+                    f"Download error (attempt {song.download_retries}/{song.max_retries}): {str(e)}", 
+                    "ERROR", 
+                    logger=self.ytdl_logger, 
+                    exc_info=True
+                )
+                await asyncio.sleep(1)  # Wait before retry
+                
+        song.is_downloaded = False
+        return False
 
     def get_currently_playing(self):
         """Returns the title of the currently playing song or None if not playing."""
