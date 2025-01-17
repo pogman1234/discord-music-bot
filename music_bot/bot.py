@@ -102,7 +102,7 @@ class MusicBot:
         # Add FFMPEG options
         self.ffmpeg_options = {
             'options': '-vn -b:a 192k',
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin'
         }
 
     # Keep the logging method
@@ -267,88 +267,43 @@ class MusicBot:
         self._log("=== Starting play_next_song ===", "DEBUG", logger=self.discord_logger)
         
         try:
-            # Step 1: Voice Client Validation
-            self._log("Step 1: Checking voice client", "DEBUG", logger=self.discord_logger)
-            if not ctx.voice_client:
-                self._log("No voice client available", "ERROR", logger=self.discord_logger)
-                await ctx.send("Bot is not connected to a voice channel.")
+            if not self.current_song:
+                self._log("No current song set", "DEBUG", logger=self.discord_logger)
                 return False
-
-            # Step 2: Connection State
-            self._log("Step 2: Checking connection state", "DEBUG", logger=self.discord_logger)
-            if not ctx.voice_client.is_connected():
-                self._log("Voice client disconnected", "ERROR", logger=self.discord_logger)
-                try:
-                    voice_channel = ctx.author.voice.channel if ctx.author.voice else None
-                    if voice_channel:
-                        await voice_channel.connect()
-                        self._log("Reconnected to voice channel", "INFO", logger=self.discord_logger)
-                    else:
-                        await ctx.send("Please join a voice channel first!")
-                        return False
-                except Exception as e:
-                    self._log(f"Connection error: {str(e)}", "ERROR", logger=self.discord_logger)
-                    await ctx.send(f"Failed to connect: {str(e)}")
-                    return False
-
-            # Step 3: Queue Check
-            self._log("Step 3: Checking queue state", "DEBUG", logger=self.discord_logger)
-            async with self.queue_lock:
-                if not self.queue:
-                    self._log("Queue is empty", "INFO", logger=self.discord_logger)
-                    self.current_song = None
-                    self.is_playing = False
-                    await ctx.send("Queue is empty.")
-                    return False
                 
-                # Get next song
-                self.current_song = self.queue.popleft()
-                self._log(f"Got next song: {self.current_song.title}", "INFO", logger=self.discord_logger)
-
-            # Step 4: File Verification
-            self._log("Step 4: Verifying file exists", "DEBUG", logger=self.discord_logger)
-            if not os.path.exists(self.current_song.filepath):
-                self._log(f"File missing: {self.current_song.filepath}", "ERROR", logger=self.discord_logger)
-                await ctx.send(f"Error: File not found for {self.current_song.title}")
-                self.current_song = None
-                await self.play_next_song(ctx)
-                return False
-
-            # Step 5: Audio Playback
-            self._log("Step 5: Starting audio playback", "DEBUG", logger=self.discord_logger)
-            try:
-                source = discord.FFmpegPCMAudio(
-                    self.current_song.filepath,
-                    **self.ffmpeg_options
-                )
-                transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
-
-                def after_playing(error):
+            source = discord.FFmpegPCMAudio(
+                self.current_song.filepath,
+                **self.ffmpeg_options
+            )
+            transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
+            
+            def after_playing(error):
+                try:
                     if error:
                         self._log(f"Playback error in callback: {str(error)}", "ERROR", logger=self.discord_logger)
-                    # Use run_coroutine_threadsafe since callback runs in different thread
-                    asyncio.run_coroutine_threadsafe(
-                        self.play_next_song_callback(ctx), 
+                    
+                    # Safely get title
+                    title = self.current_song.title if self.current_song else "Unknown"
+                    self._log(f"Finished playing: {title}", "INFO", logger=self.discord_logger)
+                    
+                    # Schedule callback in event loop
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.play_next_song_callback(ctx),
                         self.loop
                     )
-
-                ctx.voice_client.play(transformed_source, after=after_playing)
-                self.is_playing = True
-                
-                await ctx.send(f"🎵 Now playing: {self.current_song.title}")
-                self._log(f"Successfully started playing: {self.current_song.title}", "INFO", logger=self.discord_logger)
-                return True
-
-            except Exception as e:
-                self._log(f"Playback error: {str(e)}", "ERROR", logger=self.discord_logger)
-                await ctx.send(f"Error playing {self.current_song.title}: {str(e)}")
-                self.current_song = None
-                await self.play_next_song(ctx)
-                return False
-
+                    future.result()  # Wait for callback to complete
+                    
+                except Exception as e:
+                    self._log(f"Error in after_playing: {str(e)}", "ERROR", logger=self.discord_logger)
+            
+            ctx.voice_client.play(transformed_source, after=after_playing)
+            self.is_playing = True
+            
+            await ctx.send(f"🎵 Now playing: {self.current_song.title}")
+            return True
+            
         except Exception as e:
-            self._log(f"Critical error in play_next_song: {str(e)}", "ERROR", logger=self.discord_logger)
-            await ctx.send(f"An error occurred: {str(e)}")
+            self._log(f"Error in play_next_song: {str(e)}", "ERROR", logger=self.discord_logger)
             return False
 
     # Keep helper methods from current code
