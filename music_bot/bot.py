@@ -118,57 +118,75 @@ class MusicBot:
 
     async def play_next_song(self, ctx):
         self._log("Attempting to play next song", "INFO", logger=self.discord_logger)
-        self.ctx = ctx
-
+        
+        # Step 1: Verify voice client state
         if not ctx.voice_client:
             self._log("No voice client found", "ERROR", logger=self.discord_logger)
             return
 
-        self._log(f"Voice client status - Connected: {ctx.voice_client.is_connected()}, Playing: {ctx.voice_client.is_playing()}", "DEBUG", logger=self.discord_logger)
-
+        # Step 2: Check voice client connection
         if not ctx.voice_client.is_connected():
-            self._log("Voice client not connected", "ERROR", logger=self.discord_logger)
-            await ctx.send("Bot is not connected to a voice channel.")
-            return
-        
+            try:
+                # Attempt to reconnect if channel is available
+                voice_channel = ctx.author.voice.channel if ctx.author.voice else None
+                if voice_channel:
+                    await voice_channel.connect()
+                else:
+                    self._log("No voice channel available", "ERROR", logger=self.discord_logger)
+                    await ctx.send("Please join a voice channel first!")
+                    return
+            except Exception as e:
+                self._log(f"Failed to connect to voice channel: {str(e)}", "ERROR", logger=self.discord_logger)
+                await ctx.send("Failed to connect to voice channel.")
+                return
+
+        # Step 3: Get and verify song
         async with self.queue_lock:
             if not self.queue:
                 self.current_song = None
                 self.is_playing = False
-                self._log("Queue is empty, nothing to play.", "INFO", logger=self.discord_logger)
+                self._log("Queue is empty", "INFO", logger=self.discord_logger)
                 return
 
             self.current_song = self.queue.popleft()
-        self._log(f"Playing next song: {self.current_song.title}", "INFO", logger=self.discord_logger)
 
-        if not self.current_song.is_downloaded:
-            download_success = await self.download_song(self.current_song)
-            if not download_success:
-                await ctx.send(f"Failed to download: {self.current_song.title}")
-                await self.play_next_song(ctx)
-                return
-
-        if not hasattr(self.current_song, 'filepath') or not self.current_song.filepath or not os.path.exists(self.current_song.filepath):
-            self._log("Song filepath not found or invalid", "ERROR", logger=self.discord_logger)
-            await ctx.send("Error: Could not find audio file for this song.")
-            self.play_next_song_callback(ctx)
+        # Step 4: Verify file exists
+        if not os.path.exists(self.current_song.filepath):
+            self._log(f"File not found: {self.current_song.filepath}", "ERROR", logger=self.discord_logger)
+            await ctx.send(f"Error: Audio file not found for {self.current_song.title}")
+            await self.play_next_song(ctx)
             return
 
+        # Step 5: Play the audio with enhanced error handling
         try:
-            source = discord.FFmpegPCMAudio(self.current_song.filepath, **self.ffmpeg_options)
-            transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
-            self.is_playing = True
-            ctx.voice_client.play(
-                transformed_source,
-                after=lambda e: self.play_next_song_callback(ctx) if e is None else self._log(f"Error in playback: {e}", "ERROR")
+            # Initialize audio source with explicit options
+            ffmpeg_options = {
+                'options': '-vn -b:a 192k',
+                'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+            }
+            
+            source = discord.FFmpegPCMAudio(
+                self.current_song.filepath,
+                **ffmpeg_options
             )
+            transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
 
-            await ctx.send(f"Now playing: {self.current_song.title}")
+            def after_playing(error):
+                if error:
+                    self._log(f"Playback error: {str(error)}", "ERROR", logger=self.discord_logger)
+                self.play_next_song_callback(ctx)
+
+            # Start playback
+            ctx.voice_client.play(transformed_source, after=after_playing)
+            self.is_playing = True
+            
+            await ctx.send(f"🎵 Now playing: {self.current_song.title}")
+            self._log(f"Started playing: {self.current_song.title}", "INFO", logger=self.discord_logger)
 
         except Exception as e:
-            self._log(f"Error during playback: {str(e)}", "ERROR", logger=self.discord_logger)
-            await ctx.send(f"An error occurred while playing the song: {str(e)}")
-            self.play_next_song_callback(ctx)
+            self._log(f"Playback error: {str(e)}", "ERROR", logger=self.discord_logger)
+            await ctx.send(f"Error playing {self.current_song.title}: {str(e)}")
+            await self.play_next_song(ctx)
 
     def play_next_song_callback(self, ctx):
         self.loop.call_soon_threadsafe(self.cleanup_current_song)
