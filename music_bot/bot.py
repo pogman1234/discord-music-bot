@@ -364,11 +364,11 @@ class MusicBot:
                     self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
                     
                     next_song = self.queue[0]
-                    self._log(f"Processing next song: {next_song.title}", "DEBUG", logger=self.ytdl_logger)
+                    self._log(f"Processing next song: {next_song.title}", "INFO", logger=self.ytdl_logger)
                     
                     try:
                         if not next_song.is_downloaded:
-                            self._log("Starting download...", "DEBUG", logger=self.ytdl_logger)
+                            self._log("Starting download...", "INFO", logger=self.ytdl_logger)
                             download_success = await asyncio.wait_for(
                                 self.download_song(next_song),
                                 timeout=300  # 5 minute timeout
