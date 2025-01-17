@@ -18,11 +18,24 @@ from datetime import datetime
 class Song:
     def __init__(self, url, title, duration, thumbnail):
         self.url = url
-        self.title = title.replace('/', '_').replace('\\', '_')  # Sanitize filename
+        self.video_id = self._extract_video_id(url)
+        self.title = self._sanitize_filename(title)
         self.duration = duration
         self.thumbnail = thumbnail
         self.filepath = None
         self.is_downloaded = False
+        
+    def _extract_video_id(self, url):
+        if 'youtu.be' in url:
+            return url.split('/')[-1]
+        if 'youtube.com' in url:
+            return url.split('v=')[-1].split('&')[0]
+        return url[:11]  # YouTube IDs are 11 chars
+        
+    def _sanitize_filename(self, title):
+        # Keep it simple and short
+        safe_title = ''.join(c for c in title[:30] if c.isalnum() or c == ' ')
+        return f"{safe_title}_{self.video_id}"
         
     def to_dict(self):
         return {
@@ -36,13 +49,26 @@ class Song:
         
     async def download(self, ytdl):
         try:
+            ytdl.params.update({
+                'outtmpl': f'music/{self.video_id}.%(ext)s',
+                'keepvideo': False,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                }]
+            })
+            
             info = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: ytdl.extract_info(self.url, download=True)
             )
-            self.filepath = ytdl.prepare_filename(info)
-            self.is_downloaded = True
-            return True
+            
+            self.filepath = f"music/{self.video_id}.mp3"
+            if os.path.exists(self.filepath):
+                self.is_downloaded = True
+                return True
+            return False
+            
         except Exception as e:
             print(f"Download error: {e}")
             return False
