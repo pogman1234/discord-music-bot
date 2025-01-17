@@ -29,8 +29,8 @@ class Song:
         return getattr(self, key)
 
     def _sanitize_filename(self, title):
-        safe_title = ''.join(c for c in title[:30] if c.isalnum() or c == ' ')
-        return safe_title
+        """Keep full title for display, sanitize only for filesystem"""
+        return ''.join(c for c in title if c.isalnum() or c in ' -_()[]{}')
 
     def to_dict(self):
         return {
@@ -158,8 +158,8 @@ class MusicBot:
             song_data = await self.process_url_or_search(query)
 
             if not song_data:
-              await ctx.send("Could not find a video based on your query.")
-              return None
+                await ctx.send("Could not find a video based on your query.")
+                return None
             
             # Extract video ID directly from search results or URL
             video_id = song_data.get('id')
@@ -168,21 +168,27 @@ class MusicBot:
                 await ctx.send("Error: Could not extract video ID.")
                 return None
 
+            # Get full title from song_data
+            full_title = song_data.get('title', 'Unknown Title')
+
             song = Song(
-                url=song_data.get('webpage_url', f"https://www.youtube.com/watch?v={video_id}"), # Fallback URL
-                title=song_data['title'],
+                url=song_data.get('webpage_url', f"https://www.youtube.com/watch?v={video_id}"),
+                title=full_title,  # Use full title instead of truncated
                 duration=song_data.get('duration', 0),
                 thumbnail=song_data.get('thumbnail'),
-                video_id=video_id  # Pass the extracted ID to the Song object
+                video_id=video_id
             )
             
             self.queue.append(song)
             if not self.queue_task:
                 self.queue_task = asyncio.create_task(self.process_queue(ctx))
+
+            # Send full title in queue message
+            await ctx.send(f"Added to queue: {full_title}")
             return song.to_dict()
 
         except Exception as e:
-            self.discord_logger.error(f"Error adding song to queue: {str(e)}")
+            self._log(f"Error adding song to queue: {str(e)}", "ERROR", logger=self.discord_logger)
             await ctx.send(f"Error adding song to queue: {str(e)}")
             return None
 
