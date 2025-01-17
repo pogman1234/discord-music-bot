@@ -251,74 +251,98 @@ class MusicBot:
             return None
 
     def play_next_song_callback(self, ctx, error):
-        """Callback function to be executed after a song finishes playing."""
-        if error:
-            self._log(f"Error in play_next_song: {error}", "ERROR", logger=self.discord_logger)
-        if self.queue:
-            next_song = self.queue.popleft()
-            asyncio.run_coroutine_threadsafe(self.play_song(ctx, next_song), self.loop)
-        else:
-            self._log("Queue empty after song finished or error", "INFO", logger=self.discord_logger)
-            self.current_song = None
+        """Synchronous callback for after song finishes"""
+        try:
+            if error:
+                self._log(f"Error in play_next_song: {error}", "ERROR", logger=self.discord_logger)
+                
+            async def _async_part():
+                self.is_playing = False
+                if self.queue:
+                    next_song = self.queue.popleft()
+                    self.current_song = next_song
+                    await self.play_next_song(ctx)
+                else:
+                    self._log("Queue empty after song finished", "INFO", logger=self.discord_logger)
+                    self.current_song = None
+                    
+            # Schedule the async part properly
+            future = asyncio.run_coroutine_threadsafe(_async_part(), self.loop)
+            
+            # Handle any errors from the async execution
+            try:
+                future.result(timeout=30)  # Wait up to 30 seconds
+            except Exception as e:
+                self._log(f"Error in async callback: {str(e)}", "ERROR", logger=self.discord_logger)
+                
+        except Exception as e:
+            self._log(f"Error in sync callback: {str(e)}", "ERROR", logger=self.discord_logger)
 
     async def play_next_song(self, ctx):
         self._log("=== Starting play_next_song ===", "DEBUG", logger=self.discord_logger)
-    
+
         try:
             if not self.current_song:
                 self._log("No current song set", "DEBUG", logger=self.discord_logger)
                 return False
-    
+
             # Use subprocess to get more detailed FFmpeg output
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg',
                 '-i', self.current_song.filepath,
                 '-vn',  # Disable video
                 '-f', 'wav',  # Output format: WAV
-                '-acodec', 'pcm_s16le',  # Audio codec: 16-bit PCM (standard for WAV)
-                '-ar', '48000',  # Sample rate: 48000 Hz (Discord's preferred rate)
+                '-acodec', 'pcm_s16le',  # Audio codec: 16-bit PCM
+                '-ar', '48000',  # Sample rate: 48000 Hz
                 '-ac', '2',  # Channels: 2 (stereo)
                 '-loglevel', 'debug',
                 '-',  # Output to stdout
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-    
-            # Define read_stream as a nested function to capture 'process'
-            async def read_stream(stream, callback):
+
+            # Define read_stream as a non-async callback
+            def handle_stream_output(line):
+                if line:
+                    self._log(f"FFmpeg: {line}", "DEBUG", logger=self.ytdl_logger)
+
+            # Create tasks to read stdout and stderr concurrently
+            async def read_stream(stream):
                 while True:
-                    line = await stream.read(1024)  # Read in chunks
+                    line = await stream.read(1024)
                     if not line:
                         break
                     try:
-                        # Attempt to decode as text
                         text_line = line.decode().strip()
-                        self._log(f"FFmpeg: {text_line}", "DEBUG", logger=self.ytdl_logger)
-                        await callback(text_line)
+                        handle_stream_output(text_line)
                     except UnicodeDecodeError:
-                        # Handle binary data (e.g., write to file directly)
-                        if self.file is not None and not self.file.closed:
-                            self.file.write(line)
-    
-            # Create tasks to read stdout and stderr concurrently
-            asyncio.create_task(read_stream(process.stdout, lambda x: None))  # Replace lambda x: None with your callback if needed
-            asyncio.create_task(read_stream(process.stderr, lambda x: None))  # Replace lambda x: None with your callback if needed
-    
-            # Create a FFmpegPCMAudio source with the process
-            source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(process.stdout, pipe=True, options=self.ffmpeg_options['options']), volume=self.volume)
+                        pass
+
+            # Start stream readers
+            stdout_task = asyncio.create_task(read_stream(process.stdout))
+            stderr_task = asyncio.create_task(read_stream(process.stderr))
+
+            # Create audio source
+            source = discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    self.current_song.filepath,
+                    options=self.ffmpeg_options['options']
+                ),
+                volume=self.volume
+            )
+
+            # Play with proper callback
+            ctx.voice_client.play(source, after=lambda e: self.play_next_song_callback(ctx, e))
             self.is_playing = True
-    
-            # Use a lambda function to pass ctx to the callback
-            ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next_song_callback(ctx, e), self.loop))
-    
+
             await ctx.send(f"🎵 Now playing: {self.current_song.title}")
             return True
-    
+
         except Exception as e:
             self._log(f"Error in play_next_song: {str(e)}", "ERROR", logger=self.discord_logger)
-            self.is_playing = False  # Ensure is_playing is set to False on error
-            if self.current_song:  # Check if current_song is not None before accessing attributes
-                self.queue.appendleft(self.current_song)  # Add the current song back to the front of the queue
+            self.is_playing = False
+            if self.current_song:
+                self.queue.appendleft(self.current_song)
             self.current_song = None
             return False
 
