@@ -68,7 +68,8 @@ class MusicBot:
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
-            }]
+            }],
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
         }
         
         # Initialize loggers like in current code
@@ -286,12 +287,20 @@ class MusicBot:
             )
 
             # Read FFmpeg's output in real-time
-            async def read_stream(stream):
+            async def read_stream(self, stream, callback):
                 while True:
-                    line = await stream.readline()
+                    line = await stream.read(1024)  # Read in chunks
                     if not line:
                         break
-                    self._log(f"FFmpeg: {line.decode().strip()}", "DEBUG", logger=self.ytdl_logger)
+                    try:
+                        # Attempt to decode as text
+                        text_line = line.decode().strip()
+                        self._log(f"FFmpeg: {text_line}", "DEBUG", logger=self.ytdl_logger)
+                        await callback(text_line)
+                    except UnicodeDecodeError:
+                        # Handle binary data (e.g., write to file directly)
+                        if self.file is not None and not self.file.closed:
+                            self.file.write(line)
 
             asyncio.create_task(read_stream(process.stdout))
             asyncio.create_task(read_stream(process.stderr))
