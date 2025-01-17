@@ -274,7 +274,7 @@ class MusicBot:
 
         # Create absolute path for download
         abs_download_dir = os.path.abspath(self.download_dir)
-        abs_filepath = os.path.join(abs_download_dir, f"{song.video_id}.mp3")
+        abs_filepath = os.path.join(abs_download_dir, f"{song.video_id}")
         self._log(f"Absolute filepath: {abs_filepath}", "DEBUG", logger=self.ytdl_logger)
 
         while song.download_retries < song.max_retries:
