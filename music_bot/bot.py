@@ -278,20 +278,13 @@ class MusicBot:
                 
             async def _async_part():
                 self.is_playing = False
-                if self.queue:
-                    next_song = self.queue.popleft()
-                    self.current_song = next_song
-                    await self.play_next_song(ctx)
-                else:
-                    self._log("Queue empty after song finished", "INFO", logger=self.discord_logger)
-                    self.current_song = None
-                    
+                self.current_song = None  # Just clear current song and let process_queue handle the rest
+                
             # Schedule the async part properly
             future = asyncio.run_coroutine_threadsafe(_async_part(), self.loop)
             
-            # Handle any errors from the async execution
             try:
-                future.result(timeout=30)  # Wait up to 30 seconds
+                future.result(timeout=30)
             except Exception as e:
                 self._log(f"Error in async callback: {str(e)}", "ERROR", logger=self.discord_logger)
                 
