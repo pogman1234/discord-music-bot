@@ -18,11 +18,21 @@ from datetime import datetime
 class Song:
     def __init__(self, url, title, duration, thumbnail):
         self.url = url
-        self.title = title
+        self.title = title.replace('/', '_').replace('\\', '_')  # Sanitize filename
         self.duration = duration
         self.thumbnail = thumbnail
         self.filepath = None
         self.is_downloaded = False
+        
+    def to_dict(self):
+        return {
+            'url': self.url,
+            'title': self.title,
+            'duration': self.duration,
+            'thumbnail': self.thumbnail,
+            'filepath': self.filepath,
+            'is_downloaded': self.is_downloaded
+        }
         
     async def download(self, ytdl):
         try:
