@@ -142,6 +142,7 @@ class MusicBot:
 
         # Step 3: Get and verify song
         async with self.queue_lock:
+            self._log("Get and verify song", "INFO", logger=self.discord_logger)
             if not self.queue:
                 self.current_song = None
                 self.is_playing = False
