@@ -178,6 +178,7 @@ class MusicBot:
                     song.filepath = mp3_filepath  # Update to actual MP3 path
                     song.is_downloaded = True
                     self._log(f"MP3 file found at: {mp3_filepath}", "INFO", logger=self.ytdl_logger)
+                    self._log("Download complete, triggering playback", "INFO", logger=self.ytdl_logger)
                     return True
                 else:
                     raise FileNotFoundError(f"MP3 file not found at {mp3_filepath}")
@@ -364,29 +365,22 @@ class MusicBot:
                 async with self.queue_lock:
                     if self.queue and not self.is_playing:
                         next_song = self.queue[0]
-                        self._log(f"Processing next song: {next_song.title}", "INFO", logger=self.ytdl_logger)
+                        self._log(f"Found next song in queue: {next_song.title}", "DEBUG", logger=self.discord_logger)
 
                         if not next_song.is_downloaded:
+                            self._log("Starting download process", "DEBUG", logger=self.discord_logger)
                             download_success = await self.download_song(next_song)
-                            
+
                             if not download_success:
                                 self._log("Download failed, skipping song", "ERROR", logger=self.discord_logger)
                                 self.queue.popleft()
                                 continue
 
-                        # Important: Create play task BEFORE setting is_playing
-                        play_task = asyncio.create_task(self.play_next_song(ctx))
-                        self._log("Created play task", "DEBUG", logger=self.discord_logger)
-                        
-                        # Wait for play task to complete
-                        try:
-                            success = await play_task
-                            if not success:
-                                self._log("Play task failed", "ERROR", logger=self.discord_logger)
-                                self.is_playing = False
-                        except Exception as e:
-                            self._log(f"Play task error: {str(e)}", "ERROR", logger=self.discord_logger)
-                            self.is_playing = False
+                            self._log("Download successful, preparing playback", "DEBUG", logger=self.discord_logger)
+
+                        # Don't wait for play_task completion
+                        self._log("Creating play task", "DEBUG", logger=self.discord_logger)
+                        asyncio.create_task(self.play_next_song(ctx))
 
                 await asyncio.sleep(1)
 
