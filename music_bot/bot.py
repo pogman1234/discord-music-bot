@@ -22,8 +22,11 @@ class Song:
         self.title = self._sanitize_filename(title)
         self.duration = duration
         self.thumbnail = thumbnail
-        self.filepath = None
+        self.filepath = f"music/{self.video_id}.mp3"
         self.is_downloaded = False
+    
+    def __getitem__(self, key):
+        return getattr(self, key)
         
     def _extract_video_id(self, url):
         if 'youtu.be' in url:
@@ -47,50 +50,19 @@ class Song:
             'is_downloaded': self.is_downloaded
         }
         
-    async def download(self, ytdl):
-        try:
-            ytdl.params.update({
-                'outtmpl': f'music/{self.video_id}.%(ext)s',
-                'keepvideo': False,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                }]
-            })
-            
-            info = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: ytdl.extract_info(self.url, download=True)
-            )
-            
-            self.filepath = f"music/{self.video_id}.mp3"
-            if os.path.exists(self.filepath):
-                self.is_downloaded = True
-                return True
-            return False
-            
-        except Exception as e:
-            print(f"Download error: {e}")
-            return False
 
 class MusicBot:
     def __init__(self, bot, youtube):
         self.bot = bot
         self.ytdl_options = {
             'format': 'bestaudio/best',
-            'outtmpl': os.path.join('music', '%(extractor)s-%(id)s-%(title)s.%(ext)s'),  # Corrected outtmpl
+            'outtmpl': 'music/%(id)s.%(ext)s',
             'restrictfilenames': True,
             'noplaylist': True,
-            'nocheckcertificate': True,
-            'ignoreerrors': False,
-            'logtostderr': False,
-            'quiet': False,  # Enabled logging from yt_dlp
-            'no_warnings': False,  # Enabled warnings from yt_dlp
-            'default_search': 'auto',
-            'source_address': '0.0.0.0',
-            'verbose': True,  # Enabled verbose output from yt_dlp
-            'debug_printtraffic': True,
-            'no_cache_dir': True
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+            }]
         }
         self.ffmpeg_options = {
             'options': '-vn'
@@ -245,65 +217,51 @@ class MusicBot:
     async def download_song(self, url):
         try:
             self._log(f"Downloading song from URL: {url}", "INFO", logger=self.ytdl_logger)
-
-            # Get the current working directory
-            current_directory = os.getcwd()
-            self._log(f"Current working directory: {current_directory}", "DEBUG", logger=self.ytdl_logger)
-
-            # Execute ls -lrt in the current directory
-            self._log(f"Executing ls -lrt in {current_directory}", "DEBUG", logger=self.ytdl_logger)
-            process = subprocess.run(['ls', '-lrt', current_directory], capture_output=True, text=True)
-            self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
-            # Execute ls -lrt in the music directory
-            music_directory = self.download_dir  # Use self.download_dir directly
-            self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
-            process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
-            self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
+            
+            # Extract info and download
             partial = functools.partial(self.ytdl.extract_info, url, download=True)
             info = await self.loop.run_in_executor(self.thread_pool, partial)
-
-            self._log(f"yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
-
-            filepath = os.path.join(self.ytdl.prepare_filename(info))
-
-            # Wait for file to be created with a longer interval and timeout
-            total_wait_time = 0
-            while not os.path.exists(filepath) and total_wait_time < 60:  # Timeout after 60 seconds
-                self._log(f"Waiting for file to be downloaded: {filepath} (waited {total_wait_time} seconds)", "DEBUG",
-                          logger=self.ytdl_logger)
-                
-                # Execute ls -lrt in the music directory
-                self._log(f"Executing ls -lrt in {music_directory}", "DEBUG", logger=self.ytdl_logger)
-                process = subprocess.run(['ls', '-lrt', music_directory], capture_output=True, text=True)
-                self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
-                # Execute ls -lrt in the parent directory of music directory
-                parent_directory = os.path.dirname(music_directory)
-                self._log(f"Executing ls -lrt in {parent_directory}", "DEBUG", logger=self.ytdl_logger)
-                process = subprocess.run(['ls', '-lrt', parent_directory], capture_output=True, text=True)
-                self._log(f"ls -lrt output:\n{process.stdout}", "DEBUG", logger=self.ytdl_logger)
-
-                await asyncio.sleep(5)  # Wait for 5 seconds
-                total_wait_time += 5
-
-            if os.path.exists(filepath):
-                song_info = {'title': info['title'], 'url': info['webpage_url'], 'filepath': filepath}
-                self._log(f"Song info before return: {song_info}", "DEBUG", logger=self.ytdl_logger)
-                self._log(f"Successfully downloaded: {info['title']}", "INFO", logger=self.ytdl_logger)
-                return song_info
-            else:
-                self._log(f"File did not download after waiting for 60 seconds: {filepath}", "ERROR",
-                          logger=self.ytdl_logger)
+            
+            if not info:
+                self._log("Failed to get video info", "ERROR", logger=self.ytdl_logger)
                 return None
 
+            # Get video ID and prepare filepath
+            video_id = info.get('id', '')
+            if not video_id:
+                self._log("No video ID found", "ERROR", logger=self.ytdl_logger)
+                return None
+                
+            filepath = os.path.join(self.download_dir, f"{video_id}.mp3")
+            self._log(f"Expected filepath: {filepath}", "DEBUG", logger=self.ytdl_logger)
+
+            # Wait for file with timeout
+            total_wait_time = 0
+            while not os.path.exists(filepath) and total_wait_time < 30:
+                self._log(f"Waiting for file... ({total_wait_time}s)", "DEBUG", logger=self.ytdl_logger)
+                if os.path.exists(self.download_dir):
+                    files = os.listdir(self.download_dir)
+                    self._log(f"Files in directory: {files}", "DEBUG", logger=self.ytdl_logger)
+                await asyncio.sleep(2)
+                total_wait_time += 2
+
+            if os.path.exists(filepath):
+                song_info = {
+                    'title': info['title'],
+                    'url': info['webpage_url'],
+                    'filepath': filepath,
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail', '')
+                }
+                self._log(f"Download successful: {info['title']}", "INFO", logger=self.ytdl_logger)
+                return song_info
+                
+            self._log(f"Download failed - file not found: {filepath}", "ERROR", logger=self.ytdl_logger)
+            return None
+
         except Exception as e:
-            self._log(f"Error downloading song with yt_dlp: {e}", "ERROR", logger=self.ytdl_logger, url=url)
-            # Add more specific exception handling here, if possible
-            if 'info' in locals() and info:
-                self._log(f"Partial yt_dlp info: {info}", "DEBUG", logger=self.ytdl_logger)
-            return None  # Ensure None is returned on error
+            self._log(f"Download error: {str(e)}", "ERROR", logger=self.ytdl_logger, exc_info=True)
+            return None
     
     def get_currently_playing(self):
         """Returns the title of the currently playing song or None if not playing."""
