@@ -124,7 +124,6 @@ async def ping(interaction: discord.Interaction):
 
 # --- Load Cogs ---
 async def load_cogs():
-    # Get absolute path to commands directory
     commands_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "commands")
     logger.info(f"Loading cogs from: {commands_dir}")
     
@@ -135,7 +134,8 @@ async def load_cogs():
         
         for filename in files:
             cog_name = filename[:-3]  # Remove .py extension
-            full_path = f"music_bot.commands.{cog_name}"
+            # Change the import path to be relative
+            full_path = f"commands.{cog_name}"
             
             try:
                 logger.info(f"Attempting to load cog: {full_path}")
