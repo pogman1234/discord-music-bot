@@ -158,7 +158,9 @@ class MusicBot:
             return
 
         # Step 5: Play the audio with enhanced error handling
+        self._log(f"Stepping into try block to play audio {self.current_song.filepath}", "INFO", logger=self.discord_logger)
         try:
+            self._log(f"Inside try block to play audio {self.current_song.filepath}", "INFO", logger=self.discord_logger)
             # Initialize audio source with explicit options
             ffmpeg_options = {
                 'options': '-vn -b:a 192k',

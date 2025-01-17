@@ -8,6 +8,7 @@ logger = logging.getLogger('discord')
 class Play(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.last_message_time = {}  # Track last message time per guild
 
     @app_commands.command(name="play", description="Plays audio from a YouTube URL or search term")
     async def play(self, interaction: discord.Interaction, *, arg: str):
@@ -15,6 +16,14 @@ class Play(commands.Cog):
         await interaction.response.defer()
 
         ctx = await self.bot.get_context(interaction)
+        guild_id = ctx.guild.id
+
+        # Check if we've sent a similar message recently (within 2 seconds)
+        current_time = discord.utils.utcnow().timestamp()
+        if guild_id in self.last_message_time:
+            if current_time - self.last_message_time[guild_id] < 2:
+                logger.debug("Skipping duplicate message")
+                return
 
         if not ctx.author.voice:
             await interaction.followup.send("You are not connected to a voice channel!")
@@ -38,6 +47,7 @@ class Play(commands.Cog):
             if song_info:
                 logger.info(f"Song info: {song_info}")
                 await interaction.followup.send(f"Added to queue: {song_info['title']}")
+                self.last_message_time[guild_id] = current_time
             else:
                 await interaction.followup.send("Could not find that song.")
         except Exception as e:
