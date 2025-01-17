@@ -251,59 +251,69 @@ class MusicBot:
             return None
 
     async def play_next_song_callback(self, ctx):
-        """Callback method for after song finishes"""
-        self._log("Song finished, cleaning up", "DEBUG", logger=self.discord_logger)
+        """Callback method for after song finishes or an error occurs."""
+        self._log("Song finished or error occurred, cleaning up", "DEBUG", logger=self.discord_logger)
         self.is_playing = False
-        
+
         # Schedule next song in event loop
         if self.queue:
             self._log("Scheduling next song", "DEBUG", logger=self.discord_logger)
-            asyncio.create_task(self.play_next_song(ctx))
+            asyncio.create_task(self.play_next_song(ctx))  # Use asyncio.create_task
         else:
-            self._log("Queue empty after song finished", "INFO", logger=self.discord_logger)
+            self._log("Queue empty after song finished or error", "INFO", logger=self.discord_logger)
             self.current_song = None
 
-    async def play_next_song(self, ctx):   
+    async def play_next_song(self, ctx):
         self._log("=== Starting play_next_song ===", "DEBUG", logger=self.discord_logger)
-        
+    
         try:
             if not self.current_song:
                 self._log("No current song set", "DEBUG", logger=self.discord_logger)
                 return False
-                
-            source = discord.FFmpegPCMAudio(
-                self.current_song.filepath,
-                **self.ffmpeg_options
+    
+            # Use subprocess to get more detailed FFmpeg output
+            process = await asyncio.create_subprocess_exec(
+                'ffmpeg',
+                '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
+                '-i', self.current_song.filepath,
+                '-vn',
+                '-f', 's16le',
+                '-acodec', 'pcm_s16le',
+                '-ar', '48000',
+                '-ac', '2',
+                '-loglevel', 'debug',  # Add debug logging for FFmpeg
+                '-',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
+    
+            # Read FFmpeg's output in real-time
+            async def read_stream(stream):
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    self._log(f"FFmpeg: {line.decode().strip()}", "DEBUG", logger=self.ytdl_logger)
+    
+            asyncio.create_task(read_stream(process.stdout))
+            asyncio.create_task(read_stream(process.stderr))
+    
+            # Create a FFmpegPCMAudio source with the process
+            source = discord.FFmpegPCMAudio(
+                process.stdout,
+                pipe=True
+            )
+    
             transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
-            
-            def after_playing(error):
-                try:
-                    if error:
-                        self._log(f"Playback error in callback: {str(error)}", "ERROR", logger=self.discord_logger)
-                    
-                    # Safely get title
-                    title = self.current_song.title if self.current_song else "Unknown"
-                    self._log(f"Finished playing: {title}", "INFO", logger=self.discord_logger)
-                    
-                    # Schedule callback in event loop
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.play_next_song_callback(ctx),
-                        self.loop
-                    )
-                    future.result()  # Wait for callback to complete
-                    
-                except Exception as e:
-                    self._log(f"Error in after_playing: {str(e)}", "ERROR", logger=self.discord_logger)
-            
-            ctx.voice_client.play(transformed_source, after=after_playing)
             self.is_playing = True
-            
+
             await ctx.send(f"🎵 Now playing: {self.current_song.title}")
             return True
-            
+
         except Exception as e:
             self._log(f"Error in play_next_song: {str(e)}", "ERROR", logger=self.discord_logger)
+            self.is_playing = False  # Ensure is_playing is set to False on error
+            asyncio.create_task(self.play_next_song_callback(ctx))  # Call callback manually on error
             return False
 
     # Keep helper methods from current code
@@ -324,7 +334,6 @@ class MusicBot:
         """Returns information about currently playing song"""
         return self.current_song.to_dict() if self.current_song else None
 
-    # Add the process_queue method from current code
     async def process_queue(self, ctx):
         while True:
             try:
@@ -355,13 +364,14 @@ class MusicBot:
                             await self.play_next_song(ctx)
                         except Exception as e:
                             self._log(f"Playback error: {str(e)}", "ERROR", logger=self.discord_logger)
-                            self.is_playing = False
-                            self.current_song = None
+                            self.is_playing = False  # Set is_playing to False on error
+                            self.current_song = None  # Clear current song on error
 
-                await asyncio.sleep(1)
+                await asyncio.sleep(1)  # Check queue every second
 
             except Exception as e:
                 self._log(f"Queue processing error: {str(e)}", "ERROR", logger=self.discord_logger)
+                self.is_playing = False  # Ensure is_playing is set to False on error in the outer loop
                 await asyncio.sleep(5)
 
     async def process_url_or_search(self, query: str) -> Optional[Dict]:
