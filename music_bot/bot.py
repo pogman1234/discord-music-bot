@@ -250,27 +250,25 @@ class MusicBot:
             await ctx.send(f"Error adding song to queue: {str(e)}")
             return None
 
-    async def play_next_song_callback(self, ctx):
-        """Callback method for after song finishes or an error occurs."""
-        self._log("Song finished or error occurred, cleaning up", "DEBUG", logger=self.discord_logger)
-        self.is_playing = False
-
-        # Schedule next song in event loop
+    def play_next_song_callback(self, ctx, error):
+        """Callback function to be executed after a song finishes playing."""
+        if error:
+            self._log(f"Error in play_next_song: {error}", "ERROR", logger=self.discord_logger)
         if self.queue:
-            self._log("Scheduling next song", "DEBUG", logger=self.discord_logger)
-            asyncio.create_task(self.play_next_song(ctx))  # Use asyncio.create_task
+            next_song = self.queue.popleft()
+            asyncio.run_coroutine_threadsafe(self.play_song(ctx, next_song), self.loop)
         else:
             self._log("Queue empty after song finished or error", "INFO", logger=self.discord_logger)
             self.current_song = None
 
     async def play_next_song(self, ctx):
         self._log("=== Starting play_next_song ===", "DEBUG", logger=self.discord_logger)
-
+    
         try:
             if not self.current_song:
                 self._log("No current song set", "DEBUG", logger=self.discord_logger)
                 return False
-
+    
             # Use subprocess to get more detailed FFmpeg output
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg',
@@ -285,9 +283,9 @@ class MusicBot:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-
-            # Read FFmpeg's output in real-time
-            async def read_stream(self, stream, callback):
+    
+            # Define read_stream as a nested function to capture 'process'
+            async def read_stream(stream, callback):
                 while True:
                     line = await stream.read(1024)  # Read in chunks
                     if not line:
@@ -301,26 +299,27 @@ class MusicBot:
                         # Handle binary data (e.g., write to file directly)
                         if self.file is not None and not self.file.closed:
                             self.file.write(line)
-
-            asyncio.create_task(read_stream(process.stdout))
-            asyncio.create_task(read_stream(process.stderr))
-
+    
+            # Create tasks to read stdout and stderr concurrently
+            asyncio.create_task(read_stream(process.stdout, lambda x: None))  # Replace lambda x: None with your callback if needed
+            asyncio.create_task(read_stream(process.stderr, lambda x: None))  # Replace lambda x: None with your callback if needed
+    
             # Create a FFmpegPCMAudio source with the process
-            source = discord.FFmpegPCMAudio(
-                process.stdout,
-                pipe=True
-            )
-
-            transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
+            source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(process.stdout, pipe=True, options=self.ffmpeg_options['options']), volume=self.volume)
             self.is_playing = True
-
+    
+            # Use a lambda function to pass ctx to the callback
+            ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next_song_callback(ctx, e), self.loop))
+    
             await ctx.send(f"🎵 Now playing: {self.current_song.title}")
             return True
-
+    
         except Exception as e:
             self._log(f"Error in play_next_song: {str(e)}", "ERROR", logger=self.discord_logger)
             self.is_playing = False  # Ensure is_playing is set to False on error
-            asyncio.create_task(self.play_next_song_callback(ctx))  # Call callback manually on error
+            if self.current_song:  # Check if current_song is not None before accessing attributes
+                self.queue.appendleft(self.current_song)  # Add the current song back to the front of the queue
+            self.current_song = None
             return False
 
     # Keep helper methods from current code
