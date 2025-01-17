@@ -27,6 +27,7 @@ class Song:
     max_retries: int = 3
 
     def __post_init__(self):
+        # Add .mp3 extension explicitly
         self.filepath = os.path.join("music", f"{self.video_id}.mp3")
 
     def __getitem__(self, key):
@@ -135,7 +136,10 @@ class MusicBot:
         # Create absolute path for download
         abs_download_dir = os.path.abspath(self.download_dir)
         abs_filepath = os.path.join(abs_download_dir, f"{song.video_id}")
-        self._log(f"Absolute filepath: {abs_filepath}", "DEBUG", logger=self.ytdl_logger)
+        mp3_filepath = f"{abs_filepath}.mp3"
+        
+        self._log(f"Download path: {abs_filepath}", "DEBUG", logger=self.ytdl_logger)
+        self._log(f"Expected MP3 path: {mp3_filepath}", "DEBUG", logger=self.ytdl_logger)
 
         while song.download_retries < song.max_retries:
             try:
@@ -165,12 +169,13 @@ class MusicBot:
                 )
 
                 # Verify file exists after download
-                if os.path.exists(song.filepath):
+                if os.path.exists(mp3_filepath):
+                    song.filepath = mp3_filepath  # Update to actual MP3 path
                     song.is_downloaded = True
-                    self._log(f"Download successful: {song.title}", "INFO", logger=self.ytdl_logger)
+                    self._log(f"MP3 file found at: {mp3_filepath}", "INFO", logger=self.ytdl_logger)
                     return True
                 else:
-                    raise FileNotFoundError(f"Downloaded file not found at {song.filepath}")
+                    raise FileNotFoundError(f"MP3 file not found at {mp3_filepath}")
 
             except Exception as e:
                 song.download_retries += 1
