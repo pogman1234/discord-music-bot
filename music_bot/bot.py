@@ -15,24 +15,23 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict
 from datetime import datetime
 
+@dataclass
 class Song:
-    def __init__(self, url, title, duration, thumbnail, video_id):
-        self.url = url
-        self.video_id = video_id
-        self.title = self._sanitize_filename(title)
-        self.duration = duration
-        self.thumbnail = thumbnail
-        self.filepath = os.path.join("music", f"{self.video_id}.mp3")  # Use os.path.join
-        self.is_downloaded = False
-        self.download_retries = 0
-        self.max_retries = 3
+    url: str
+    title: str
+    duration: int
+    thumbnail: str
+    video_id: str
+    filepath: str = ""
+    is_downloaded: bool = False
+    download_retries: int = 0
+    max_retries: int = 3
+
+    def __post_init__(self):
+        self.filepath = os.path.join("music", f"{self.video_id}.mp3")
 
     def __getitem__(self, key):
         return getattr(self, key)
-
-    def _sanitize_filename(self, title):
-        """Keep full title for display, sanitize only for filesystem"""
-        return ''.join(c for c in title if c.isalnum() or c in ' -_()[]{}')
 
     def to_dict(self):
         return {
@@ -52,20 +51,22 @@ class MusicBot:
             'format': 'bestaudio/best',
             'extractaudio': True,
             'audioformat': 'mp3',
-            'outtmpl': 'music/%(id)s.%(ext)s', # Directly save to the correct location
+            'outtmpl': os.path.join('music', '%(id)s.%(ext)s'),  # Save to music directory
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'quiet': True,
+            'quiet': False,  # Enable verbose logging
             'no_warnings': True,
+            'default_search': 'auto',
             'source_address': '0.0.0.0'
         }
         self.ffmpeg_options = {
             'options': '-vn'
         }
-        self.ytdl = YoutubeDL(self.ytdl_options)
+        # Use a separate instance of YoutubeDL for downloading
+        self.download_ytdl = YoutubeDL(self.ytdl_options)
         self.queue = deque()  # Stores Song objects
         self.current_song = None
         self.loop = asyncio.get_event_loop()
@@ -82,6 +83,20 @@ class MusicBot:
         self.ytdl_logger.setLevel(logging.DEBUG)
         self.discord_logger = logging.getLogger('discord')
         self.discord_logger.setLevel(logging.INFO)
+
+        # Create a file handler for ytdl logs
+        ytdl_file_handler = logging.FileHandler('ytdl.log')
+        ytdl_file_handler.setLevel(logging.DEBUG)
+
+        # Create a formatter for ytdl logs
+        ytdl_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        ytdl_file_handler.setFormatter(ytdl_formatter)
+
+        # Add the file handler to the ytdl logger
+        self.ytdl_logger.addHandler(ytdl_file_handler)
+
+        # Hook into the yt-dlp logger
+        self.ytdl_options['logger'] = self.ytdl_logger
 
         os.makedirs(self.download_dir, exist_ok=True)
 
@@ -166,7 +181,7 @@ class MusicBot:
             if not song_data:
                 await ctx.send("Could not find a video based on your query.")
                 return None
-            
+
             # Extract video ID directly from search results or URL
             video_id = song_data.get('id')
             if not video_id:
@@ -184,7 +199,7 @@ class MusicBot:
                 thumbnail=song_data.get('thumbnail'),
                 video_id=video_id
             )
-            
+
             self.queue.append(song)
             if not self.queue_task:
                 self.queue_task = asyncio.create_task(self.process_queue(ctx))
@@ -203,30 +218,32 @@ class MusicBot:
         try:
             # Check if query is a URL
             is_url = query.startswith(('http://', 'https://', 'www.'))
-            
+
+            ytdl = YoutubeDL(self.ytdl_options)
+
             if is_url:
                 # Direct URL handling
                 info = await self.loop.run_in_executor(
                     self.thread_pool,
-                    lambda: self.ytdl.extract_info(query, download=False)
+                    lambda: ytdl.extract_info(query, download=False)
                 )
             else:
                 # Search handling
                 search_query = f"ytsearch:{query}"  # Use ytsearch instead of auto
                 info = await self.loop.run_in_executor(
                     self.thread_pool,
-                    lambda: self.ytdl.extract_info(search_query, download=False)
+                    lambda: ytdl.extract_info(search_query, download=False)
                 )
 
             # Handle search results
             if 'entries' in info:
                 info = info['entries'][0]
-            
+
             if not info:
                 raise ValueError("No results found")
-                
+
             return info
-            
+
         except Exception as e:
             self._log(f"Error processing URL/search: {str(e)}", "ERROR", logger=self.ytdl_logger)
             raise
@@ -235,18 +252,18 @@ class MusicBot:
         """Downloads a song using yt-dlp with retry mechanism"""
         while song.download_retries < song.max_retries:
             try:
-                self._log(f"Downloading song: {song.title} (URL: {song.url})", "INFO", logger=self.ytdl_logger)
-                
+                self._log(f"Downloading song: {song.title} (URL: {song.url}) (Attempt: {song.download_retries + 1}/{song.max_retries})", "INFO", logger=self.ytdl_logger)
+
                 # Ensure download directory exists
                 os.makedirs(self.download_dir, exist_ok=True)
-                
+
                 # Download using yt-dlp
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
                     self.thread_pool,
-                    functools.partial(self.ytdl.download, [song.url])
+                    functools.partial(self.download_ytdl.download, [song.url])
                 )
-                
+
                 # Verify file exists after download
                 if os.path.exists(song.filepath):
                     song.is_downloaded = True
@@ -254,17 +271,17 @@ class MusicBot:
                     return True
                 else:
                     raise FileNotFoundError(f"Downloaded file not found at {song.filepath}")
-                    
+
             except Exception as e:
                 song.download_retries += 1
                 self._log(
-                    f"Download error (attempt {song.download_retries}/{song.max_retries}): {str(e)}", 
-                    "ERROR", 
-                    logger=self.ytdl_logger, 
+                    f"Download error (attempt {song.download_retries}/{song.max_retries}): {str(e)}",
+                    "ERROR",
+                    logger=self.ytdl_logger,
                     exc_info=True
                 )
-                await asyncio.sleep(1)  # Wait before retry
-                
+                await asyncio.sleep(5)  # Increased wait time
+
         song.is_downloaded = False
         return False
 
