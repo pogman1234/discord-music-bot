@@ -265,17 +265,17 @@ class MusicBot:
 
     async def play_next_song(self, ctx):
         self._log("=== Starting play_next_song ===", "DEBUG", logger=self.discord_logger)
-    
+
         try:
             if not self.current_song:
                 self._log("No current song set", "DEBUG", logger=self.discord_logger)
                 return False
-    
+
             # Use subprocess to get more detailed FFmpeg output
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg',
                 '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
-                '-i', self.current_song.filepath,
+                '-i', self.current_song.filepath + '.mp3',
                 '-vn',
                 '-f', 's16le',
                 '-acodec', 'pcm_s16le',
@@ -286,7 +286,7 @@ class MusicBot:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-    
+
             # Read FFmpeg's output in real-time
             async def read_stream(stream):
                 while True:
@@ -294,16 +294,16 @@ class MusicBot:
                     if not line:
                         break
                     self._log(f"FFmpeg: {line.decode().strip()}", "DEBUG", logger=self.ytdl_logger)
-    
+
             asyncio.create_task(read_stream(process.stdout))
             asyncio.create_task(read_stream(process.stderr))
-    
+
             # Create a FFmpegPCMAudio source with the process
             source = discord.FFmpegPCMAudio(
                 process.stdout,
                 pipe=True
             )
-    
+
             transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
             self.is_playing = True
 
