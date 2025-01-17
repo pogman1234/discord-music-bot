@@ -274,9 +274,13 @@ class MusicBot:
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg',
                 '-i', self.current_song.filepath,
-                '-vn',
-                '-loglevel', 'debug',  # Add debug logging for FFmpeg
-                '-',
+                '-vn',  # Disable video
+                '-f', 'wav',  # Output format: WAV
+                '-acodec', 'pcm_s16le',  # Audio codec: 16-bit PCM (standard for WAV)
+                '-ar', '48000',  # Sample rate: 48000 Hz (Discord's preferred rate)
+                '-ac', '2',  # Channels: 2 (stereo)
+                '-loglevel', 'debug',
+                '-',  # Output to stdout
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
