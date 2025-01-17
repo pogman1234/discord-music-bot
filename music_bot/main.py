@@ -80,7 +80,8 @@ app = FastAPI()
 
 # CORS configuration (adjust origins as needed for your frontend)
 origins = [ 
-    "https://poggles-discord-bot-235556599709.us-east1.run.app"
+    "https://poggles-discord-bot-235556599709.us-east1.run.app",
+    "https://music-bot-frontend-235556599709.us-central1.run.app"
 ]
 
 app.add_middleware(
@@ -123,28 +124,30 @@ async def ping(interaction: discord.Interaction):
 
 # --- Load Cogs ---
 async def load_cogs():
-    commands_dir = "commands/"
-    logger.info(f"Scanning directory: {commands_dir}")
+    # Get absolute path to commands directory
+    commands_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "commands")
+    logger.info(f"Loading cogs from: {commands_dir}")
     
-    # List all files in directory
     try:
-        files = os.listdir(commands_dir)
-        logger.info(f"Found files: {files}")
-    except Exception as e:
-        logger.error(f"Failed to list commands directory: {e}")
-        return
-
-    # Load each Python file as a cog
-    for filename in files:
-        if filename.endswith(".py") and not filename.startswith("__"):
-            extension = filename[:-3]
+        files = [f for f in os.listdir(commands_dir) 
+                if f.endswith('.py') and not f.startswith('__')]
+        logger.info(f"Found cog files: {files}")
+        
+        for filename in files:
+            cog_name = filename[:-3]  # Remove .py extension
+            full_path = f"music_bot.commands.{cog_name}"
+            
             try:
-                await bot.load_extension(f"commands.{extension}")
-                logger.info(f"Loaded cog: {extension}")
+                logger.info(f"Attempting to load cog: {full_path}")
+                await bot.load_extension(full_path)
+                logger.info(f"Successfully loaded cog: {cog_name}")
             except Exception as e:
-                logger.error(f"Failed to load cog {extension}: {e}", exc_info=True)
-
-    logger.info("Finished loading cogs")
+                logger.error(f"Failed to load cog {cog_name}: {str(e)}", exc_info=True)
+                continue
+                
+        logger.info(f"Cog loading complete. Loaded {len(files)} cogs")
+    except Exception as e:
+        logger.error(f"Failed to load cogs: {str(e)}", exc_info=True)
 
 async def start_bot():
     bot.music_bot = MusicBot(bot, youtube)

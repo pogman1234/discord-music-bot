@@ -58,7 +58,6 @@ class MusicBot:
             'logtostderr': False,
             'quiet': True,
             'no_warnings': True,
-            'default_search': 'auto', # Changed to 'auto' to handle both URLs and searches
             'source_address': '0.0.0.0'
         }
         self.ffmpeg_options = {
@@ -190,22 +189,32 @@ class MusicBot:
     async def process_url_or_search(self, query: str) -> dict:
         """Process either direct URLs or search terms"""
         try:
-            # If not a URL, assume it's a search term. Use 'auto' to let yt-dlp decide.
-            if not query.startswith(('http://', 'https://')):
-                query = f'auto:{query}'
+            # Check if query is a URL
+            is_url = query.startswith(('http://', 'https://', 'www.'))
+            
+            if is_url:
+                # Direct URL handling
+                info = await self.loop.run_in_executor(
+                    self.thread_pool,
+                    lambda: self.ytdl.extract_info(query, download=False)
+                )
+            else:
+                # Search handling
+                search_query = f"ytsearch:{query}"  # Use ytsearch instead of auto
+                info = await self.loop.run_in_executor(
+                    self.thread_pool,
+                    lambda: self.ytdl.extract_info(search_query, download=False)
+                )
 
-            # Extract info using ytdl
-            data = await self.loop.run_in_executor(
-                self.thread_pool,
-                lambda: self.ytdl.extract_info(query, download=False)
-            )
-
-            # Handle both direct videos and search results
-            if 'entries' in data:
-                # Take first result from search or playlist
-                data = data['entries'][0]
-
-            return data
+            # Handle search results
+            if 'entries' in info:
+                info = info['entries'][0]
+            
+            if not info:
+                raise ValueError("No results found")
+                
+            return info
+            
         except Exception as e:
             self._log(f"Error processing URL/search: {str(e)}", "ERROR", logger=self.ytdl_logger)
             raise
