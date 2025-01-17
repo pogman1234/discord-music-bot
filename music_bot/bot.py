@@ -16,26 +16,26 @@ from typing import Optional, List, Dict
 from datetime import datetime
 
 class Song:
-    def __init__(self, url: str, title: str, duration: int, thumbnail: str = None):
+    def __init__(self, url, title, duration, thumbnail):
         self.url = url
         self.title = title
         self.duration = duration
         self.thumbnail = thumbnail
-        self.filepath = None  # Add filepath attribute
-        self.source = None    # Add source attribute
-
-    def __getitem__(self, key):
-        # Enable dictionary-like access
-        return getattr(self, key)
-
-    def to_dict(self) -> Dict:
-        return {
-            'url': self.url,
-            'title': self.title,
-            'duration': self.duration,
-            'thumbnail': self.thumbnail,
-            'filepath': self.filepath if hasattr(self, 'filepath') else None
-        }
+        self.filepath = None
+        self.is_downloaded = False
+        
+    async def download(self, ytdl):
+        try:
+            info = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: ytdl.extract_info(self.url, download=True)
+            )
+            self.filepath = ytdl.prepare_filename(info)
+            self.is_downloaded = True
+            return True
+        except Exception as e:
+            print(f"Download error: {e}")
+            return False
 
 class MusicBot:
     def __init__(self, bot, youtube):
@@ -67,6 +67,8 @@ class MusicBot:
         self.volume = 0.5
         self.youtube = youtube
         self.download_dir = "music"
+        self.is_playing = False
+        self.queue_task = None
 
         # Set up loggers
         self.ytdl_logger = logging.getLogger('ytdl')
@@ -90,9 +92,20 @@ class MusicBot:
 
     async def on_ready(self):
         self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO", logger=self.discord_logger)
+        if not self.queue_task:
+            self.queue_task = asyncio.create_task(self.process_queue())
 
     async def play_next_song(self, ctx):
-        self.ctx = ctx  # Store context for use in after_callback
+        self.ctx = ctx
+
+        if not ctx.voice_client:
+            self._log("No voice client found", "ERROR", logger=self.discord_logger)
+            return
+
+        if not ctx.voice_client.is_connected():
+            self._log("Voice client not connected", "ERROR", logger=self.discord_logger)
+            await ctx.send("Bot is not connected to a voice channel.")
+            return
 
         if not self.queue:
             self.current_song = None
@@ -100,44 +113,28 @@ class MusicBot:
             return
 
         self.current_song = self.queue.popleft()
-        self._log(f"Playing next song: {self.current_song.title}", "INFO", logger=self.discord_logger,
-                  url=self.current_song.url)
+        self._log(f"Playing next song: {self.current_song.title}", "INFO", logger=self.discord_logger)
 
-        # Log the filepath before creating FFmpegPCMAudio source
-        self._log(f"Attempting to play from: {self.current_song.filepath}", "DEBUG", logger=self.discord_logger)
+        if not hasattr(self.current_song, 'filepath') or not self.current_song.filepath:
+            self._log("Song filepath not found", "ERROR", logger=self.discord_logger)
+            await ctx.send("Error: Could not find audio file for this song.")
+            return
 
         try:
             source = discord.FFmpegPCMAudio(self.current_song.filepath, **self.ffmpeg_options)
-        except discord.errors.ClientException as e:
-            self._log(f"Error creating FFmpegPCMAudio source: {e}", "ERROR", logger=self.discord_logger)
-            await ctx.send("An error occurred while preparing the song for playback.")
-            return
-
-        source.volume = self.volume
-        self.current_song.source = source
-
-        def after_callback(error):
-            if error:
-                self._log(f"Playback error: {error}", "ERROR", logger=self.discord_logger)
-
-            # Schedule cleanup to run in the event loop
-            self.loop.call_soon_threadsafe(self.cleanup_current_song)
-
-            # Schedule play_next_song to run in the event loop if there are songs in the queue
-            if self.queue:
-                coro = self.play_next_song(self.ctx)  # Pass the context
-                asyncio.run_coroutine_threadsafe(coro, self.loop)
-
-        if ctx.voice_client:
-            try:
-                ctx.voice_client.play(
-                    source,
-                    after=lambda e: after_callback(e)  # Correctly pass 'e' to after_callback
-                )
-            except discord.errors.ClientException as e:
-                self._log(f"Error during playback: {e}", "ERROR", logger=self.discord_logger)
-                await ctx.send("An error occurred during playback.")
-                return
+            transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
+            
+            ctx.voice_client.play(
+                transformed_source,
+                after=lambda e: self.play_next_song_callback(ctx) if e is None else self._log(f"Error in playback: {e}", "ERROR")
+            )
+            
+            await ctx.send(f"Now playing: {self.current_song.title}")
+            
+        except Exception as e:
+            self._log(f"Error during playback: {str(e)}", "ERROR", logger=self.discord_logger)
+            await ctx.send(f"An error occurred while playing the song: {str(e)}")
+            self.play_next_song_callback(ctx)
 
     def play_next_song_callback(self, ctx):
         self.loop.call_soon_threadsafe(self.cleanup_current_song)
@@ -173,6 +170,8 @@ class MusicBot:
             )
             
             self.queue.append(song)
+            if not self.queue_task:
+                self.queue_task = asyncio.create_task(self.process_queue())
             return song.to_dict()
             
         except Exception as e:
@@ -299,3 +298,14 @@ class MusicBot:
             return list(self.queue).index(self.current_song)
         except ValueError:
             return 0
+
+    async def process_queue(self):
+        while True:
+            if not self.is_playing and self.queue and not self.current_song:
+                song = self.queue[0]
+                if not song.is_downloaded:
+                    await song.download(self.ytdl)
+                if song.is_downloaded:
+                    self.queue.popleft()
+                    await self.play_next_song(self.ctx)
+            await asyncio.sleep(1)
