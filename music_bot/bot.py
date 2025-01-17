@@ -286,47 +286,12 @@ class MusicBot:
                 self._log("No current song set", "DEBUG", logger=self.discord_logger)
                 return False
 
-            # Use subprocess to get more detailed FFmpeg output
-            process = await asyncio.create_subprocess_exec(
-                'ffmpeg',
-                '-i', self.current_song.filepath,
-                '-vn',  # Disable video
-                '-f', 'wav',  # Output format: WAV
-                '-acodec', 'pcm_s16le',  # Audio codec: 16-bit PCM
-                '-ar', '48000',  # Sample rate: 48000 Hz
-                '-ac', '2',  # Channels: 2 (stereo)
-                '-loglevel', 'debug',
-                '-',  # Output to stdout
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            # Define read_stream as a non-async callback
-            def handle_stream_output(line):
-                if line:
-                    self._log(f"FFmpeg: {line}", "DEBUG", logger=self.ytdl_logger)
-
-            # Create tasks to read stdout and stderr concurrently
-            async def read_stream(stream):
-                while True:
-                    line = await stream.read(1024)
-                    if not line:
-                        break
-                    try:
-                        text_line = line.decode().strip()
-                        handle_stream_output(text_line)
-                    except UnicodeDecodeError:
-                        pass
-
-            # Start stream readers
-            stdout_task = asyncio.create_task(read_stream(process.stdout))
-            stderr_task = asyncio.create_task(read_stream(process.stderr))
-
-            # Create audio source
+            # Create audio source with proper FFmpeg options
             source = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
                     self.current_song.filepath,
-                    options=self.ffmpeg_options['options']
+                    before_options='-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -loglevel quiet',
+                    options='-vn -b:a 192k'
                 ),
                 volume=self.volume
             )
