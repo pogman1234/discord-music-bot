@@ -116,11 +116,14 @@ class MusicBot:
         self._log(f"Logged in as {self.bot.user.name} ({self.bot.user.id})", "INFO", logger=self.discord_logger)
 
     async def play_next_song(self, ctx):
+        self._log("Attempting to play next song", "INFO", logger=self.discord_logger)
         self.ctx = ctx
 
         if not ctx.voice_client:
             self._log("No voice client found", "ERROR", logger=self.discord_logger)
             return
+
+        self._log(f"Voice client status - Connected: {ctx.voice_client.is_connected()}, Playing: {ctx.voice_client.is_playing()}", "DEBUG", logger=self.discord_logger)
 
         if not ctx.voice_client.is_connected():
             self._log("Voice client not connected", "ERROR", logger=self.discord_logger)
@@ -174,11 +177,13 @@ class MusicBot:
         self.current_song = None
 
     async def add_to_queue(self, ctx, query: str) -> Optional[Dict]:
-        """Adds a song to the queue (processes URL or search) and returns song info"""
+        self._log(f"Adding to queue: {query}", "INFO", logger=self.discord_logger)
         try:
             song_data = await self.process_url_or_search(query)
+            self._log(f"Retrieved song data: {json.dumps(song_data, indent=2)}", "DEBUG", logger=self.ytdl_logger)
 
             if not song_data:
+                self._log("No song data found", "ERROR", logger=self.discord_logger)
                 await ctx.send("Could not find a video based on your query.")
                 return None
 
@@ -203,6 +208,8 @@ class MusicBot:
             self.queue.append(song)
             if not self.queue_task:
                 self.queue_task = asyncio.create_task(self.process_queue(ctx))
+
+            self._log(f"Created queue task: {self.queue_task is not None}", "INFO", logger=self.discord_logger)
 
             # Send full title in queue message
             await ctx.send(f"Added to queue: {full_title}")
@@ -249,7 +256,10 @@ class MusicBot:
             raise
 
     async def download_song(self, song: Song):
-        """Downloads a song using yt-dlp with retry mechanism"""
+        self._log(f"Starting download process for: {song.title}", "INFO", logger=self.ytdl_logger)
+        self._log(f"Download directory: {self.download_dir}", "DEBUG", logger=self.ytdl_logger)
+        self._log(f"Expected filepath: {song.filepath}", "DEBUG", logger=self.ytdl_logger)
+
         while song.download_retries < song.max_retries:
             try:
                 self._log(f"Downloading song: {song.title} (URL: {song.url}) (Attempt: {song.download_retries + 1}/{song.max_retries})", "INFO", logger=self.ytdl_logger)
@@ -280,6 +290,7 @@ class MusicBot:
                     logger=self.ytdl_logger,
                     exc_info=True
                 )
+                self._log(f"Download attempt {song.download_retries + 1} completed", "DEBUG", logger=self.ytdl_logger)
                 await asyncio.sleep(5)  # Increased wait time
 
         song.is_downloaded = False
@@ -314,12 +325,24 @@ class MusicBot:
     async def process_queue(self, ctx):
         """Processes the song queue, downloading and playing songs as needed"""
         while True:
+            self._log("Queue processing cycle starting", "DEBUG", logger=self.discord_logger)
             if self.queue and not self.is_playing:
+                self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
                 next_song = self.queue[0]
+                self._log(f"Next song in queue: {next_song.title}", "INFO", logger=self.discord_logger)
+                
                 if not next_song.is_downloaded:
-                    await self.download_song(next_song)
+                    self._log(f"Attempting to download: {next_song.title}", "INFO", logger=self.discord_logger)
+                    download_success = await self.download_song(next_song)
+                    self._log(f"Download success: {download_success}", "INFO", logger=self.discord_logger)
+                
                 if next_song.is_downloaded:
+                    self._log(f"Starting playback of: {next_song.title}", "INFO", logger=self.discord_logger)
                     await self.play_next_song(ctx)
+                else:
+                    self._log(f"Failed to download: {next_song.title}", "ERROR", logger=self.discord_logger)
+            else:
+                self._log(f"Queue empty or already playing. Queue size: {len(self.queue)}, is_playing: {self.is_playing}", "DEBUG", logger=self.discord_logger)
             await asyncio.sleep(1)
 
     def get_queue(self, guild_id: int = None) -> List[Song]:
