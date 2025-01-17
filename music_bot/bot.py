@@ -290,7 +290,6 @@ class MusicBot:
             source = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
                     self.current_song.filepath,
-                    before_options='-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -loglevel quiet',
                     options='-vn -b:a 192k'
                 ),
                 volume=self.volume
