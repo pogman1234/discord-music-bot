@@ -259,19 +259,45 @@ class MusicBot:
         self._log(f"Starting download process for: {song.title}", "INFO", logger=self.ytdl_logger)
         self._log(f"Download directory: {self.download_dir}", "DEBUG", logger=self.ytdl_logger)
         self._log(f"Expected filepath: {song.filepath}", "DEBUG", logger=self.ytdl_logger)
+        
+        # Verify FFMPEG installation
+        try:
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            self._log("FFMPEG is available", "INFO", logger=self.ytdl_logger)
+        except Exception as e:
+            self._log(f"FFMPEG not found: {str(e)}", "ERROR", logger=self.ytdl_logger)
+            return False
+
+        # Create absolute path for download
+        abs_download_dir = os.path.abspath(self.download_dir)
+        abs_filepath = os.path.join(abs_download_dir, f"{song.video_id}.mp3")
+        self._log(f"Absolute filepath: {abs_filepath}", "DEBUG", logger=self.ytdl_logger)
 
         while song.download_retries < song.max_retries:
             try:
-                self._log(f"Downloading song: {song.title} (URL: {song.url}) (Attempt: {song.download_retries + 1}/{song.max_retries})", "INFO", logger=self.ytdl_logger)
-
-                # Ensure download directory exists
-                os.makedirs(self.download_dir, exist_ok=True)
-
-                # Download using yt-dlp
+                self._log(f"Download attempt {song.download_retries + 1} starting", "INFO", logger=self.ytdl_logger)
+                
+                # Updated ytdl options for this download
+                download_opts = self.ytdl_options.copy()
+                download_opts.update({
+                    'outtmpl': abs_filepath,
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }]
+                })
+                
+                # Create new YoutubeDL instance with updated options
+                ytdl = YoutubeDL(download_opts)
+                
+                # Perform download in thread pool
+                self._log(f"Starting YoutubeDL download for URL: {song.url}", "DEBUG", logger=self.ytdl_logger)
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
                     self.thread_pool,
-                    functools.partial(self.download_ytdl.download, [song.url])
+                    functools.partial(ytdl.download, [song.url])
                 )
 
                 # Verify file exists after download
