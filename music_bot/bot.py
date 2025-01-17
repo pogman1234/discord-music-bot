@@ -99,6 +99,12 @@ class MusicBot:
 
         os.makedirs(self.download_dir, exist_ok=True)
 
+        # Add FFMPEG options
+        self.ffmpeg_options = {
+            'options': '-vn -b:a 192k',
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+        }
+
     # Keep the logging method
     def _log(self, message, severity="DEBUG", logger=None, **kwargs):
         entry = {
@@ -244,6 +250,19 @@ class MusicBot:
             await ctx.send(f"Error adding song to queue: {str(e)}")
             return None
 
+    async def play_next_song_callback(self, ctx):
+        """Callback method for after song finishes"""
+        self._log("Song finished, cleaning up", "DEBUG", logger=self.discord_logger)
+        self.is_playing = False
+        
+        # Schedule next song in event loop
+        if self.queue:
+            self._log("Scheduling next song", "DEBUG", logger=self.discord_logger)
+            asyncio.create_task(self.play_next_song(ctx))
+        else:
+            self._log("Queue empty after song finished", "INFO", logger=self.discord_logger)
+            self.current_song = None
+
     async def play_next_song(self, ctx):   
         self._log("=== Starting play_next_song ===", "DEBUG", logger=self.discord_logger)
         
@@ -298,21 +317,20 @@ class MusicBot:
             # Step 5: Audio Playback
             self._log("Step 5: Starting audio playback", "DEBUG", logger=self.discord_logger)
             try:
-                ffmpeg_options = {
-                    'options': '-vn -b:a 192k',
-                    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
-                }
-                
                 source = discord.FFmpegPCMAudio(
                     self.current_song.filepath,
-                    **ffmpeg_options
+                    **self.ffmpeg_options
                 )
                 transformed_source = discord.PCMVolumeTransformer(source, volume=self.volume)
 
                 def after_playing(error):
                     if error:
                         self._log(f"Playback error in callback: {str(error)}", "ERROR", logger=self.discord_logger)
-                    self.play_next_song_callback(ctx)
+                    # Use run_coroutine_threadsafe since callback runs in different thread
+                    asyncio.run_coroutine_threadsafe(
+                        self.play_next_song_callback(ctx), 
+                        self.loop
+                    )
 
                 ctx.voice_client.play(transformed_source, after=after_playing)
                 self.is_playing = True
