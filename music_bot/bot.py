@@ -77,6 +77,7 @@ class MusicBot:
         self.is_playing = False
         self.queue_task = None
         self.queues = {}  # Guild ID -> Queue mapping
+        self.queue_lock = asyncio.Lock() # Create a lock for the queue
 
         # Set up loggers
         self.ytdl_logger = logging.getLogger('ytdl')
@@ -129,14 +130,15 @@ class MusicBot:
             self._log("Voice client not connected", "ERROR", logger=self.discord_logger)
             await ctx.send("Bot is not connected to a voice channel.")
             return
+        
+        async with self.queue_lock:
+            if not self.queue:
+                self.current_song = None
+                self.is_playing = False
+                self._log("Queue is empty, nothing to play.", "INFO", logger=self.discord_logger)
+                return
 
-        if not self.queue:
-            self.current_song = None
-            self.is_playing = False
-            self._log("Queue is empty, nothing to play.", "INFO", logger=self.discord_logger)
-            return
-
-        self.current_song = self.queue.popleft()
+            self.current_song = self.queue.popleft()
         self._log(f"Playing next song: {self.current_song.title}", "INFO", logger=self.discord_logger)
 
         if not self.current_song.is_downloaded:
@@ -204,8 +206,10 @@ class MusicBot:
                 thumbnail=song_data.get('thumbnail'),
                 video_id=video_id
             )
+            
+            async with self.queue_lock:  # Acquire the lock
+                self.queue.append(song)
 
-            self.queue.append(song)
             if not self.queue_task:
                 self.queue_task = asyncio.create_task(self.process_queue(ctx))
 
@@ -348,59 +352,64 @@ class MusicBot:
         except ValueError:
             return 0
 
+
     async def process_queue(self, ctx):
         """Processes the song queue, downloading and playing songs as needed"""
         while True:
             try:
                 self._log("Queue processing cycle starting", "DEBUG", logger=self.discord_logger)
-                
+
                 # Check voice client first
                 if not ctx.voice_client or not ctx.voice_client.is_connected():
                     self._log("Voice client not ready", "ERROR", logger=self.discord_logger)
                     await asyncio.sleep(1)
                     continue
-                    
-                if self.queue and not self.is_playing:
-                    self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
-                    
-                    next_song = self.queue[0]
-                    self._log(f"Processing next song: {next_song.title}", "INFO", logger=self.ytdl_logger)
-                    
-                    try:
-                        if not next_song.is_downloaded:
-                            self._log("Starting download...", "INFO", logger=self.ytdl_logger)
-                            download_success = await asyncio.wait_for(
-                                self.download_song(next_song),
-                                timeout=300  # 5 minute timeout
-                            )
-                            
-                            if not download_success:
-                                self._log("Download failed, removing song", "ERROR", logger=self.discord_logger)
-                                self.queue.popleft()
-                                continue
-                        
-                        self._log("Download complete, starting playback", "INFO", logger=self.discord_logger)
-                        self.is_playing = True  # Set flag before playing
-                        await self.play_next_song(ctx)
-                        
-                    except asyncio.TimeoutError:
-                        self._log("Operation timed out", "ERROR", logger=self.discord_logger)
-                        self.queue.popleft()
-                    except Exception as e:
-                        self._log(f"Error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
-                        self.queue.popleft()
-                
+
+                async with self.queue_lock:  # Acquire the lock
+                    self._log(f"Type of self.queue: {type(self.queue)}", "DEBUG", logger=self.discord_logger)
+                    if self.queue and not self.is_playing:
+                        self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
+
+                        next_song = self.queue[0]  # Access the queue (protected by lock)
+                        self._log(f"Processing next song: {next_song.title}", "INFO", logger=self.ytdl_logger)
+
+                        try:
+                            if not next_song.is_downloaded:
+                                self._log("Starting download...", "INFO", logger=self.ytdl_logger)
+                                download_success = await asyncio.wait_for(
+                                    self.download_song(next_song),
+                                    timeout=300  # 5 minute timeout
+                                )
+
+                                if not download_success:
+                                    self._log("Download failed, removing song", "ERROR", logger=self.discord_logger)
+                                    self.queue.popleft()  # Modify queue (protected by lock)
+                                    continue
+
+                            self._log("Download complete, starting playback", "INFO", logger=self.discord_logger)
+                            self.is_playing = True  # Set flag before playing
+                            await self.play_next_song(ctx)
+
+                        except asyncio.TimeoutError:
+                            self._log("Operation timed out", "ERROR", logger=self.discord_logger)
+                            self.queue.popleft()  # Modify queue (protected by lock)
+                        except Exception as e:
+                            self._log(f"Error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
+                            self.queue.popleft()  # Modify queue (protected by lock)
+                    # Lock is automatically released when exiting 'async with' block
+
                 await asyncio.sleep(1)
-                
+
             except Exception as e:
                 self._log(f"Critical error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
                 await asyncio.sleep(5)  # Longer sleep on critical error
-
-    def get_queue(self, guild_id: int = None) -> List[Song]:
+    
+    async def get_queue(self, guild_id: int = None) -> List[Song]:
         """Get the current song queue for a guild"""
-        if guild_id is None:
-            # Return first guild's queue for testing
-            if not self.queues:
-                return []
-            return list(self.queues.values())[0]
-        return self.queues.get(guild_id, [])
+        async with self.queue_lock:
+            if guild_id is None:
+                # Return first guild's queue for testing
+                if not self.queues:
+                    return []
+                return list(self.queues.values())[0]
+            return self.queues.get(guild_id, [])
