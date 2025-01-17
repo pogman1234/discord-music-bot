@@ -102,7 +102,6 @@ class MusicBot:
         # Add FFMPEG options
         self.ffmpeg_options = {
             'options': '-vn -b:a 192k',
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin'
         }
 
     # Keep the logging method
@@ -274,13 +273,8 @@ class MusicBot:
             # Use subprocess to get more detailed FFmpeg output
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg',
-                '-reconnect', '3', '-reconnect_streamed', '1', '-reconnect_delay_max', '5',
                 '-i', self.current_song.filepath,
                 '-vn',
-                '-f', 's16le',
-                '-acodec', 'pcm_s16le',
-                '-ar', '48000',
-                '-ac', '2',
                 '-loglevel', 'debug',  # Add debug logging for FFmpeg
                 '-',
                 stdout=asyncio.subprocess.PIPE,
