@@ -21,13 +21,20 @@ class Song:
         self.title = title
         self.duration = duration
         self.thumbnail = thumbnail
+        self.filepath = None  # Add filepath attribute
+        self.source = None    # Add source attribute
+
+    def __getitem__(self, key):
+        # Enable dictionary-like access
+        return getattr(self, key)
 
     def to_dict(self) -> Dict:
         return {
             'url': self.url,
             'title': self.title,
             'duration': self.duration,
-            'thumbnail': self.thumbnail
+            'thumbnail': self.thumbnail,
+            'filepath': self.filepath if hasattr(self, 'filepath') else None
         }
 
 class MusicBot:
