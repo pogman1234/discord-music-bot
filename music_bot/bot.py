@@ -52,7 +52,7 @@ class MusicBot:
             'format': 'bestaudio/best',
             'extractaudio': True,
             'audioformat': 'mp3',
-            'outtmpl': os.path.join('music', '%(id)s.%(ext)s'),
+            'outtmpl': '%(id)s.%(ext)s',  # Simplified path
             'restrictfilenames': True,
             'noplaylist': True,
             'nocheckcertificate': True,
@@ -63,7 +63,12 @@ class MusicBot:
             'default_search': 'auto',
             'source_address': '0.0.0.0',
             'debug_printtraffic': True,
-            'verbose': True
+            'verbose': True,
+            'postprocessors': [{  # Add postprocessor
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
         }
         
         # Initialize loggers like in current code
@@ -347,55 +352,47 @@ class MusicBot:
 
     # Add the process_queue method from current code
     async def process_queue(self, ctx):
-        """Processes the song queue, downloading and playing songs as needed"""
         while True:
             try:
                 self._log("Queue processing cycle starting", "DEBUG", logger=self.discord_logger)
 
-                # Check voice client first
                 if not ctx.voice_client or not ctx.voice_client.is_connected():
-                    self._log("Voice client not ready", "ERROR", logger=self.discord_logger)
+                    self._log("Voice client not ready", "DEBUG", logger=self.discord_logger)
                     await asyncio.sleep(1)
                     continue
 
-                async with self.queue_lock:  # Acquire the lock
-                    self._log(f"Type of self.queue: {type(self.queue)}", "DEBUG", logger=self.discord_logger)
+                async with self.queue_lock:
                     if self.queue and not self.is_playing:
-                        self._log(f"Queue has {len(self.queue)} items and not currently playing", "INFO", logger=self.discord_logger)
-
-                        next_song = self.queue[0]  # Access the queue (protected by lock)
+                        next_song = self.queue[0]
                         self._log(f"Processing next song: {next_song.title}", "INFO", logger=self.ytdl_logger)
 
+                        if not next_song.is_downloaded:
+                            download_success = await self.download_song(next_song)
+                            
+                            if not download_success:
+                                self._log("Download failed, skipping song", "ERROR", logger=self.discord_logger)
+                                self.queue.popleft()
+                                continue
+
+                        # Important: Create play task BEFORE setting is_playing
+                        play_task = asyncio.create_task(self.play_next_song(ctx))
+                        self._log("Created play task", "DEBUG", logger=self.discord_logger)
+                        
+                        # Wait for play task to complete
                         try:
-                            if not next_song.is_downloaded:
-                                self._log("Starting download...", "INFO", logger=self.ytdl_logger)
-                                download_success = await asyncio.wait_for(
-                                    self.download_song(next_song),
-                                    timeout=300  # 5 minute timeout
-                                )
-
-                                if not download_success:
-                                    self._log("Download failed, removing song", "ERROR", logger=self.discord_logger)
-                                    self.queue.popleft()  # Modify queue (protected by lock)
-                                    continue
-
-                            self._log("Download complete, starting playback", "INFO", logger=self.discord_logger)
-                            self.is_playing = True  # Set flag before playing
-                            await self.play_next_song(ctx)
-
-                        except asyncio.TimeoutError:
-                            self._log("Operation timed out", "ERROR", logger=self.discord_logger)
-                            self.queue.popleft()  # Modify queue (protected by lock)
+                            success = await play_task
+                            if not success:
+                                self._log("Play task failed", "ERROR", logger=self.discord_logger)
+                                self.is_playing = False
                         except Exception as e:
-                            self._log(f"Error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
-                            self.queue.popleft()  # Modify queue (protected by lock)
-                    # Lock is automatically released when exiting 'async with' block
+                            self._log(f"Play task error: {str(e)}", "ERROR", logger=self.discord_logger)
+                            self.is_playing = False
 
                 await asyncio.sleep(1)
 
             except Exception as e:
-                self._log(f"Critical error in queue processing: {str(e)}", "ERROR", logger=self.discord_logger)
-                await asyncio.sleep(5)  # Longer sleep on critical error
+                self._log(f"Queue processing error: {str(e)}", "ERROR", logger=self.discord_logger)
+                await asyncio.sleep(5)
 
     async def process_url_or_search(self, query: str) -> Optional[Dict]:
         """Process a URL or search query to get song information"""
