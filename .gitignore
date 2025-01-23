@@ -9,3 +9,6 @@ music/
 .DS_Store
 frontend/.react-router/
 build/
+.env.development
+docker-compose.dev.yml
+music_bot/ytdl.log
