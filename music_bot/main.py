@@ -81,7 +81,7 @@ app = FastAPI()
 # CORS configuration (adjust origins as needed for your frontend)
 origins = [ 
     "https://poggles-discord-bot-235556599709.us-east1.run.app",
-    "https://music-bot-frontend-235556599709.us-central1.run.app"
+    "https://music-bot-frontend-235556599709.us-central1.run.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000"
 ]
