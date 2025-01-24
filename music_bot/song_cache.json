@@ -1,0 +1,62 @@
+{
+  "queries": {
+    "arcane remember me": {
+      "video_id": "Tg9yLrJTmTc",
+      "title": "d4vd - \u201cRemember Me\u201d (from Arcane Season 2) [Official Visualizer]",
+      "duration": 123,
+      "thumbnail": "https://i.ytimg.com/vi/Tg9yLrJTmTc/maxresdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=Tg9yLrJTmTc"
+    },
+    "paramore aint it fun": {
+      "video_id": "EFEmTsfFL5A",
+      "title": "Paramore: Ain't It Fun [OFFICIAL VIDEO]",
+      "duration": 228,
+      "thumbnail": "https://i.ytimg.com/vi/EFEmTsfFL5A/maxresdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=EFEmTsfFL5A"
+    },
+    "paramore all i wanted": {
+      "video_id": "W7nmB20qJv4",
+      "title": "Paramore - All I Wanted (Official Audio)",
+      "duration": 226,
+      "thumbnail": "https://i.ytimg.com/vi/W7nmB20qJv4/hqdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=W7nmB20qJv4"
+    },
+    "paramore still into you": {
+      "video_id": "OblL026SvD4",
+      "title": "Paramore: Still Into You [OFFICIAL VIDEO]",
+      "duration": 220,
+      "thumbnail": "https://i.ytimg.com/vi/OblL026SvD4/maxresdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=OblL026SvD4"
+    }
+  },
+  "videos": {
+    "Tg9yLrJTmTc": {
+      "video_id": "Tg9yLrJTmTc",
+      "title": "d4vd - \u201cRemember Me\u201d (from Arcane Season 2) [Official Visualizer]",
+      "duration": 123,
+      "thumbnail": "https://i.ytimg.com/vi/Tg9yLrJTmTc/maxresdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=Tg9yLrJTmTc"
+    },
+    "EFEmTsfFL5A": {
+      "video_id": "EFEmTsfFL5A",
+      "title": "Paramore: Ain't It Fun [OFFICIAL VIDEO]",
+      "duration": 228,
+      "thumbnail": "https://i.ytimg.com/vi/EFEmTsfFL5A/maxresdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=EFEmTsfFL5A"
+    },
+    "W7nmB20qJv4": {
+      "video_id": "W7nmB20qJv4",
+      "title": "Paramore - All I Wanted (Official Audio)",
+      "duration": 226,
+      "thumbnail": "https://i.ytimg.com/vi/W7nmB20qJv4/hqdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=W7nmB20qJv4"
+    },
+    "OblL026SvD4": {
+      "video_id": "OblL026SvD4",
+      "title": "Paramore: Still Into You [OFFICIAL VIDEO]",
+      "duration": 220,
+      "thumbnail": "https://i.ytimg.com/vi/OblL026SvD4/maxresdefault.jpg",
+      "webpage_url": "https://www.youtube.com/watch?v=OblL026SvD4"
+    }
+  }
+}

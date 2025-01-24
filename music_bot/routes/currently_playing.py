@@ -7,9 +7,11 @@ import aiohttp
 from typing import AsyncGenerator
 import os
 import json
+import logging
 
-router = APIRouter()
 logger = logging.getLogger(__name__)
+router = APIRouter()
+
 _bot = None
 
 async def get_bot_data():
@@ -21,10 +23,16 @@ async def get_bot_data():
     try:
         current_song = _bot.music_bot.get_current_song()
         is_playing = _bot.music_bot.is_playing
+        current_position, total_duration = _bot.music_bot.audio_player.get_progress()
         
         return {
             "currentSong": current_song,
             "isPlaying": is_playing,
+            "duration": {
+                "current": current_position,
+                "total": total_duration,
+                "formatted": _bot.music_bot.audio_player.get_progress_string()
+            }
         }
     except Exception as e:
         logger.error(f"Error getting bot data: {e}")
@@ -43,6 +51,7 @@ async def event_stream(request: Request) -> AsyncGenerator[str, None]:
             current_state = {
                 "isPlaying": bot_data["isPlaying"],
                 "currentSong": bot_data["currentSong"],
+                "duration": bot_data["duration"],
                 "error": None,
                 "timestamp": int(time.time() * 1000),
             }

@@ -5,9 +5,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import time
 from typing import AsyncGenerator
 import json
+import logging
 
-router = APIRouter()
 logger = logging.getLogger(__name__)
+router = APIRouter()
+
 _bot = None
 
 async def get_queue_data():
@@ -17,7 +19,7 @@ async def get_queue_data():
         return None
 
     try:
-        queue_info = _bot.music_bot.get_queue_info()
+        queue_info = _bot.music_bot.get_queue_info()  # Use the new method
         return {
             "queue": queue_info
         }

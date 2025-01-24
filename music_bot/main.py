@@ -33,35 +33,54 @@ class GoogleCloudLogFormatter(logging.Formatter):
                 "file": record.filename,
                 "line": record.lineno,
                 "function": record.funcName
-            },
+            }
         }
 
         # Include exception info if available
         if record.exc_info:
             log_entry["exc_info"] = self.formatException(record.exc_info)
 
-        # Add extra fields if available (for structured logging)
-        log_entry.update(record.__dict__.get('extra', {}))
-
         return json.dumps(log_entry)
 
-# Configure logging
-logger = logging.getLogger('discord')
-logger.setLevel(logging.INFO)
-ytdl_logger = logging.getLogger('ytdl')
-ytdl_logger.setLevel(logging.DEBUG)
+def setup_logging():
+    # Root logger configuration
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
 
-# Log to a file
-file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
-file_handler.setFormatter(GoogleCloudLogFormatter())
-logger.addHandler(file_handler)
-ytdl_logger.addHandler(file_handler)
+    # Create console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(GoogleCloudLogFormatter())
+    
+    # Create file handler
+    file_handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+    file_handler.setFormatter(GoogleCloudLogFormatter())
 
-# Log to console
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setFormatter(GoogleCloudLogFormatter())
-logger.addHandler(console_handler)
-ytdl_logger.addHandler(console_handler)
+    # Configure root logger
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
+    # Configure specific loggers
+    loggers = {
+        'discord': logging.INFO,
+        'ytdl': logging.INFO,
+        'bot': logging.INFO,
+        'commands': logging.INFO,
+        'services': logging.INFO,
+        'routes': logging.INFO
+    }
+
+    for logger_name, level in loggers.items():
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(level)
+        # Prevent duplicate logs by not propagating to root logger
+        logger.propagate = False
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
+
+    return logging.getLogger('discord')
+
+# Initialize logging
+logger = setup_logging()
 
 # --- Intents Setup ---
 intents = discord.Intents.default()

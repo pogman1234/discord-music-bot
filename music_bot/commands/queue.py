@@ -1,11 +1,11 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
-import logging
 import json
 import time
+import logging
 
-logger = logging.getLogger('discord')
+logger = logging.getLogger(__name__)
 
 class Queue(commands.Cog):
     def __init__(self, bot):
@@ -17,7 +17,8 @@ class Queue(commands.Cog):
         try:
             await interaction.response.defer()
 
-            if not self.bot.music_bot.queue:
+            queue_info = self.bot.music_bot.queue_manager.get_queue_info()
+            if not queue_info:
                 self._log(f"'queue' command used by {interaction.user} in {interaction.guild} - Queue is empty", "INFO")
                 await interaction.followup.send("The queue is empty.")
                 return

@@ -3,7 +3,7 @@ from discord import app_commands
 import discord
 import logging
 
-logger = logging.getLogger('discord')
+logger = logging.getLogger(__name__)
 
 class Stop(commands.Cog):
     def __init__(self, bot):
@@ -14,18 +14,33 @@ class Stop(commands.Cog):
         """Stops and clears the entire song queue."""
         await interaction.response.defer()
         ctx = await self.bot.get_context(interaction)
+        music_bot = self.bot.music_bot
 
+        # Check voice states
         if not ctx.voice_client or not ctx.voice_client.is_connected():
             await interaction.followup.send("Not connected to a voice channel.", ephemeral=True)
             return
 
-        if ctx.author.voice and ctx.author.voice.channel == ctx.voice_client.channel:
-            self.bot.music_bot.queue.clear()
-            if ctx.voice_client.is_playing():
-                ctx.voice_client.stop()  # Stop the currently playing song
+        if not ctx.author.voice or ctx.author.voice.channel != ctx.voice_client.channel:
+            await interaction.followup.send(
+                "You need to be in the same voice channel as the bot to stop the bot.", 
+                ephemeral=True
+            )
+            return
+
+        try:
+            # Stop playback
+            music_bot.audio_player.stop()
+            
+            # Clear queue and reset state
+            await music_bot.queue_manager.clear()
+            await music_bot.queue_manager.clear_current()
+            
             await interaction.followup.send("Stopped and cleared the song queue.")
-        else:
-            await interaction.followup.send("You need to be in the same voice channel as the bot to stop the bot.", ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error stopping playback: {e}")
+            await interaction.followup.send("Error stopping playback.", ephemeral=True)
 
 async def setup(bot):
     logger.info("Loading stop cog")
