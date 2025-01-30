@@ -24,4 +24,5 @@ USER appuser
 EXPOSE 8080
 ENV DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
 ENV YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+ENV PYTHONPATH=/music_bot
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

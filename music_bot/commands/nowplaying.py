@@ -11,46 +11,29 @@ class NowPlaying(commands.Cog):
 
     @app_commands.command(name="nowplaying", description="Shows the currently playing song")
     async def nowplaying(self, interaction: discord.Interaction):
-        """Displays information about the currently playing song."""
         await interaction.response.defer()
         ctx = await self.bot.get_context(interaction)
         music_bot = self.bot.music_bot
+        guild_id = ctx.guild.id
+        
+        logger.info(f"Now playing command initiated for guild {guild_id}")
 
-        if not ctx.voice_client or not ctx.voice_client.is_connected():
-            await interaction.followup.send("Not connected to a voice channel.", ephemeral=True)
-            return
+        try:
+            queue_manager = music_bot.get_queue_manager(guild_id)
+            current_song = queue_manager.get_currently_playing()
+            
+            if not current_song:
+                logger.info(f"No song currently playing in guild {guild_id}")
+                await interaction.followup.send("No song is currently playing.", ephemeral=True)
+                return
 
-        current_song = music_bot.get_current_song()
-        if current_song:
-            # Create rich embed
-            embed = discord.Embed(
-                title="Now Playing", 
-                description=f"[{current_song['title']}]({current_song['webpage_url']})", 
-                color=discord.Color.blue()
-            )
+            logger.info(f"Currently playing '{current_song.title}' in guild {guild_id}")
+            await interaction.followup.send(f"Now Playing: {current_song.title}", ephemeral=True)
+            logger.info(f"Now playing command completed successfully for guild {guild_id}")
 
-            # Add progress info if available
-            if music_bot.audio_player.status.is_playing:
-                progress = music_bot.audio_player.get_progress_string()
-                embed.add_field(name="Progress", value=progress, inline=False)
-
-            # Add thumbnail
-            if current_song['thumbnail']:
-                embed.set_thumbnail(url=current_song['thumbnail'])
-
-            # Add duration if available
-            if current_song['duration'] > 0:
-                minutes = current_song['duration'] // 60
-                seconds = current_song['duration'] % 60
-                embed.add_field(
-                    name="Duration", 
-                    value=f"{minutes}:{seconds:02d}", 
-                    inline=True
-                )
-
-            await interaction.followup.send(embed=embed)
-        else:
-            await interaction.followup.send("Nothing is currently playing.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error executing now playing command for guild {guild_id}: {str(e)}", exc_info=True)
+            await interaction.followup.send("An error occurred while trying to get the current song.", ephemeral=True)
 
     @commands.command()
     async def progress(self, ctx):

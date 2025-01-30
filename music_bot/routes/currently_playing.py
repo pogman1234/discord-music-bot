@@ -1,83 +1,94 @@
-import asyncio
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 import logging
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import StreamingResponse
-import time
-import aiohttp
-from typing import AsyncGenerator
-import os
 import json
-import logging
+import asyncio
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
 _bot = None
 
-async def get_bot_data():
-    """Fetches data directly from bot instance"""
-    if not _bot:
-        logger.error("Bot instance not initialized")
-        return None
-
+async def get_currently_playing_data(guild_id: int) -> Dict:
+    """Get current playback data for a specific guild"""
     try:
-        current_song = _bot.music_bot.get_current_song()
-        is_playing = _bot.music_bot.is_playing
-        current_position, total_duration = _bot.music_bot.audio_player.get_progress()
+        queue_manager = _bot.music_bot.get_queue_manager(guild_id)
+        current_song = queue_manager.get_currently_playing()
         
-        return {
-            "currentSong": current_song,
-            "isPlaying": is_playing,
-            "duration": {
-                "current": current_position,
-                "total": total_duration,
-                "formatted": _bot.music_bot.audio_player.get_progress_string()
+        if not current_song:
+            return {
+                "guild_id": guild_id,
+                "is_playing": False,
+                "current_song": None,
+                "progress": "0:00/0:00",
+                "position": 0,
+                "duration": 0
             }
+
+        # Get progress with guild_id
+        current_position, duration = _bot.music_bot.audio_player.get_progress(guild_id)
+        progress = _bot.music_bot.audio_player.get_progress_string(guild_id)
+
+        return {
+            "guild_id": guild_id,
+            "is_playing": queue_manager.is_playing,
+            "current_song": {
+                "id": current_song.id,
+                "title": current_song.title,
+                "duration": current_song.duration,
+                "thumbnail": current_song.thumbnail,
+                "webpage_url": current_song.webpage_url
+            },
+            "progress": progress,
+            "position": current_position,
+            "duration": duration
         }
     except Exception as e:
-        logger.error(f"Error getting bot data: {e}")
-        return None
+        logger.error(f"Error getting currently playing data for guild {guild_id}: {e}", exc_info=True)
+        raise
 
-async def event_stream(request: Request) -> AsyncGenerator[str, None]:
-    """Generates the SSE stream."""
-    last_state = None
+async def event_stream(request: Request, guild_id: int):
+    """Generate SSE events for currently playing updates"""
+    last_state: Optional[Dict] = None
+    
     while True:
         if await request.is_disconnected():
-            logger.info("Client disconnected")
+            logger.info(f"Client disconnected from SSE stream for guild {guild_id}")
             break
             
-        bot_data = await get_bot_data()
-        if bot_data:
-            current_state = {
-                "isPlaying": bot_data["isPlaying"],
-                "currentSong": bot_data["currentSong"],
-                "duration": bot_data["duration"],
-                "error": None,
-                "timestamp": int(time.time() * 1000),
-            }
+        try:
+            current_state = await get_currently_playing_data(guild_id)
             if current_state != last_state:
                 yield f"data: {json.dumps(current_state)}\n\n"
                 last_state = current_state
+        except Exception as e:
+            logger.error(f"Error in SSE stream for guild {guild_id}: {e}", exc_info=True)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            break
+            
         await asyncio.sleep(1)
-
-@router.get("/sse/currently-playing")
-async def sse_endpoint(request: Request):
-    """Provides the SSE endpoint."""
-    generator = event_stream(request)
-    return StreamingResponse(generator, media_type="text/event-stream")
 
 def init_router(bot):
     global _bot
     _bot = bot
     
-    @router.get("/api/currently-playing")
-    async def get_currently_playing():
-        """Get information about the currently playing song"""
-        current_song = bot.music_bot.get_current_song()
-        is_playing = bot.music_bot.is_playing
-        return {
-            "currentSong": current_song,
-            "isPlaying": is_playing
-        }
+    @router.get("/api/currently_playing/{guild_id}")
+    async def get_currently_playing(guild_id: int):
+        """Get information about the currently playing song for a specific guild"""
+        try:
+            logger.info(f"Getting currently playing data for guild {guild_id}")
+            data = await get_currently_playing_data(guild_id)
+            return JSONResponse(content=data)
+        except Exception as e:
+            logger.error(f"Error getting currently playing data for guild {guild_id}: {e}", exc_info=True)
+            return JSONResponse(content={"error": str(e)}, status_code=500)
     
+    @router.get("/sse/currently_playing/{guild_id}")
+    async def sse_endpoint(request: Request, guild_id: int):
+        """Provides the SSE endpoint for currently playing updates for a specific guild."""
+        return StreamingResponse(
+            event_stream(request, guild_id),
+            media_type="text/event-stream"
+        )
+        
     return router

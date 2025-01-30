@@ -1,7 +1,6 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
-from typing import Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,74 +8,47 @@ logger = logging.getLogger(__name__)
 class Play(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.last_message_time: Dict[int, float] = {}
 
-    @app_commands.command(
-        name="play",
-        description="Plays audio from a YouTube URL or search term"
-    )
-    @app_commands.describe(
-        arg="YouTube URL or search term to play"
-    )
-    async def play(self, interaction: discord.Interaction, *, arg: str):
-        """
-        Plays audio from YouTube.
-        
-        Args:
-            interaction: Discord interaction context
-            arg: YouTube URL or search term
-        """
+    @app_commands.command(name="play", description="Play a song from YouTube")
+    async def play(self, interaction: discord.Interaction, song: str):
         await interaction.response.defer()
         ctx = await self.bot.get_context(interaction)
         guild_id = ctx.guild.id
+        
+        logger.info(f"Play command initiated for guild {guild_id} with query: {song}")
 
-        # Spam prevention
-        current_time = discord.utils.utcnow().timestamp()
-        if guild_id in self.last_message_time:
-            if current_time - self.last_message_time[guild_id] < 2:
-                logger.debug("Skipping duplicate message")
+        try:
+            # Get voice states
+            voice_client = ctx.voice_client
+            voice_channel = ctx.author.voice.channel if ctx.author.voice else None
+
+            if not voice_channel:
+                logger.warning(f"Play command failed - user not in voice channel in guild {guild_id}")
+                await interaction.followup.send("You need to be in a voice channel to play music.", ephemeral=True)
                 return
 
-        # Voice state validation
-        if not ctx.author.voice:
-            await interaction.followup.send(
-                "You are not connected to a voice channel!",
-                ephemeral=True
-            )
-            return
-
-        voice_channel = ctx.author.voice.channel
-        
-        try:
-            # Handle voice client
-            voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
-            if voice_client is None:
-                logger.info(f"Connecting to voice channel: {voice_channel.name}")
+            # Handle voice client connection
+            if not voice_client:
+                logger.info(f"Connecting to voice channel: {voice_channel.name} in guild {guild_id}")
                 voice_client = await voice_channel.connect()
             elif voice_client.channel != voice_channel:
-                logger.info(f"Moving to voice channel: {voice_channel.name}")
+                logger.info(f"Moving to voice channel: {voice_channel.name} in guild {guild_id}")
                 await voice_client.move_to(voice_channel)
 
             # Add to queue
-            logger.info(f"Adding to queue: {arg}")
-            song_info = await self.bot.music_bot.add_to_queue(ctx, arg)
+            logger.info(f"Adding to queue: {song} for guild: {guild_id}")
+            song_info = await self.bot.music_bot.add_to_queue(ctx, song, guild_id)
 
             if song_info:
-                logger.info(f"Song info: {song_info}")
-                await interaction.followup.send(f"Added to queue: {song_info['title']}")
-                self.last_message_time[guild_id] = current_time
+                logger.info(f"Added song to queue for guild {guild_id}: {song_info}")
+                await interaction.followup.send(f"Added to queue: {song_info['title']}", ephemeral=True)
             else:
-                await interaction.followup.send(
-                    "Could not find that song.",
-                    ephemeral=True
-                )
+                logger.warning(f"Could not find song for guild {guild_id}: {song}")
+                await interaction.followup.send("Could not find that song.", ephemeral=True)
 
         except Exception as e:
-            logger.error(f"Error playing song: {str(e)}")
-            await interaction.followup.send(
-                "An error occurred while trying to play that song.",
-                ephemeral=True
-            )
+            logger.error(f"Error executing play command for guild {guild_id}: {str(e)}", exc_info=True)
+            await interaction.followup.send("An error occurred while trying to play that song.", ephemeral=True)
 
     @staticmethod
     def is_playing(ctx) -> bool:

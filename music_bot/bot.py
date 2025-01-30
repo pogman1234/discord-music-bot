@@ -1,7 +1,7 @@
 import asyncio
 import discord
 import json
-import time
+import requests
 import os
 import logging
 from typing import Optional, Dict, List
@@ -13,67 +13,74 @@ from services.audio_player import AudioPlayer
 logger = logging.getLogger(__name__)
 
 class MusicBot:
-    def __init__(self, bot, youtube):
+    def __init__(self, bot, youtube, guilds):
         self.bot = bot
         self.youtube = youtube
+        self.guilds = guilds
         
         # Initialize services
         self.download_dir = "music"
         os.makedirs(self.download_dir, exist_ok=True)
         
-        self.queue_manager = QueueManager(self)
-        self.queue_downloader = QueueDownloader(
-            queue_manager=self.queue_manager,
-            youtube=youtube,
-            music_bot=self
-        )
+        self.queue_managers = {}  # Dictionary to hold queue managers for each guild
+        self.queue_tasks = {}  # Dictionary to hold queue tasks for each guild
+        
+        # Initialize queue downloader
+        self.queue_downloader = QueueDownloader(self, youtube, self.get_queue_manager, self.guilds)
+        
+        # Initialize audio player
         self.audio_player = AudioPlayer(self)
-        self.queue_task = None
         
         # Start queue downloader in background
         asyncio.create_task(self.queue_downloader.start())
 
-    # Add these getter methods to properly expose queue information
-    def get_queue_info(self) -> List[Dict]:
-        """Get information about all songs in queue"""
-        return self.queue_manager.get_queue_info()
+        # Initialize queues for each guild
+        asyncio.create_task(self.initialize_queues())
 
-    def get_current_song(self) -> Optional[Dict]:
-        """Get currently playing song"""
-        if self.queue_manager.current_song:
-            return self.queue_manager.current_song.to_dict()
-        return None
+    async def initialize_queues(self):
+        """Initialize queue managers for all guilds"""
+        try:
+            for guild in self.guilds:
+                guild_id = int(guild["id"])
+                self.get_queue_manager(guild_id)
+                logger.info(f"Initialized queue manager for guild {guild_id}")
+        except Exception as e:
+            logger.error(f"Error initializing queues: {e}", exc_info=True)
 
-    @property
-    def is_playing(self) -> bool:
-        """Get playing status"""
-        return self.queue_manager.is_playing
+    def get_queue_manager(self, guild_id: int) -> QueueManager:
+        """Get or create a queue manager for the guild"""
+        try:
+            if guild_id not in self.queue_managers:
+                logger.info(f"Creating new queue manager for guild {guild_id}")
+                self.queue_managers[guild_id] = QueueManager(self, guild_id)
+            return self.queue_managers[guild_id]
+        except Exception as e:
+            logger.error(f"Error getting queue manager for guild {guild_id}: {e}", exc_info=True)
+            raise
 
-    async def add_to_queue(self, ctx, query: str) -> Optional[Dict]:
+    async def add_to_queue(self, ctx, query: str, guild_id: int) -> Optional[Dict]:
         """Add a song to the queue from URL or search query"""
-        logger.info(f"Adding to queue: {query}")
         try:
             song_data = await self.process_url_or_search(query)
             if not song_data:
-                await ctx.send("Could not find a video based on your query.")
                 return None
 
             song = Song(**song_data)
-            await self.queue_manager.add(song)
+            queue_manager = self.get_queue_manager(guild_id)
+            await queue_manager.add(song)
             
-            if not self.queue_task:
-                self.queue_task = asyncio.create_task(self.process_queue(ctx))
+            if guild_id not in self.queue_tasks:
+                self.queue_tasks[guild_id] = asyncio.create_task(self.process_queue(ctx, guild_id))
 
-            await ctx.send(f"Added to queue: {song.title}")
             return song.to_dict()
 
         except Exception as e:
             logger.error(f"Error adding song to queue: {str(e)}", exc_info=True)
-            await ctx.send(f"Error adding song to queue: {str(e)}")
             return None
 
-    async def process_queue(self, ctx):
-        """Main queue processing loop"""
+    async def process_queue(self, ctx, guild_id: int):
+        """Main queue processing loop for a specific guild"""
+        queue_manager = self.get_queue_manager(guild_id)
         while True:
             try:
                 if not ctx.voice_client or not ctx.voice_client.is_connected():
@@ -81,29 +88,29 @@ class MusicBot:
                     await asyncio.sleep(1)
                     continue
 
-                if not self.queue_manager.is_playing:
-                    next_song = await self.queue_manager.get_next()
+                if not queue_manager.is_playing:
+                    next_song = await queue_manager.get_next()
                     if (next_song):
                         logger.debug(f"Got next song: {next_song.title}")
                         
                         # Start playing if already downloaded
                         if next_song.is_downloaded:
-                            await self.queue_manager.set_current(next_song)
+                            await queue_manager.set_current(next_song)
                             success = await self.audio_player.play_next(ctx, next_song)
                             
                             if not success:
                                 logger.error(f"Failed to play: {next_song.title}")
-                                await self.queue_manager.clear_current()
+                                await queue_manager.clear_current()
                         else:
                             # If not downloaded, initiate download and wait
                             logger.debug(f"Waiting for download: {next_song.title}")
                             success = await self.queue_downloader.download_song(next_song)
                             if success:
-                                await self.queue_manager.set_current(next_song)
+                                await queue_manager.set_current(next_song)
                                 success = await self.audio_player.play_next(ctx, next_song)
                                 if not success:
                                     logger.error(f"Failed to play: {next_song.title}")
-                                    await self.queue_manager.clear_current()
+                                    await queue_manager.clear_current()
                             else:
                                 logger.error(f"Failed to download: {next_song.title}")
 
@@ -111,7 +118,7 @@ class MusicBot:
 
             except Exception as e:
                 logger.error(f"Queue processing error: {str(e)}", exc_info=True)
-                await self.queue_manager.clear_current()
+                await queue_manager.clear_current()
                 await asyncio.sleep(5)
 
     async def process_url_or_search(self, query: str) -> Optional[Dict]:

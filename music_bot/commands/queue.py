@@ -1,8 +1,6 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
-import json
-import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,39 +12,31 @@ class Queue(commands.Cog):
     @app_commands.command(name="queue", description="Displays the current song queue")
     async def queue(self, interaction: discord.Interaction):
         """Displays the current song queue."""
-        try:
-            await interaction.response.defer()
+        await interaction.response.defer()
+        ctx = await self.bot.get_context(interaction)
+        music_bot = self.bot.music_bot
+        guild_id = ctx.guild.id
+        
+        logger.info(f"Queue command initiated for guild {guild_id}")
 
-            queue_info = self.bot.music_bot.queue_manager.get_queue_info()
-            if not queue_info:
-                self._log(f"'queue' command used by {interaction.user} in {interaction.guild} - Queue is empty", "INFO")
-                await interaction.followup.send("The queue is empty.")
+        try:
+            queue_manager = music_bot.get_queue_manager(guild_id)
+            queue = queue_manager.get_queue_info()
+            
+            if not queue:
+                logger.info(f"Queue is empty for guild {guild_id}")
+                await interaction.followup.send("The queue is currently empty.", ephemeral=True)
                 return
 
-            queue_list = ""
+            queue_list = "\n".join([f"{idx + 1}. {song['title']}" for idx, song in enumerate(queue)])
+            logger.info(f"Retrieved queue info for guild {guild_id}: {len(queue)} songs")
             
-            # Safely copy items from the queue to a list (no need to modify the queue directly)
-            queue_items = list(self.bot.music_bot.queue)  # Access the deque directly
-            for i, song_info in enumerate(queue_items):
-                queue_list += f"{i+1}. [{song_info['title']}]({song_info['url']})\n"
+            await interaction.followup.send(f"Current Queue:\n{queue_list}", ephemeral=True)
+            logger.info(f"Queue command completed successfully for guild {guild_id}")
 
-            embed = discord.Embed(title="Current Queue", description=queue_list, color=discord.Color.blue())
-            self._log(f"'queue' command used by {interaction.user} in {interaction.guild} - Displaying queue", "INFO")
-            await interaction.followup.send(embed=embed)
         except Exception as e:
-            self._log(f"'queue' command failed: {e}", "ERROR")
-            await interaction.followup.send("An error occurred while displaying the queue.")
-
-    def _log(self, message, severity="INFO", **kwargs):
-        entry = {
-            "message": message,
-            "severity": severity,
-            "timestamp": {"seconds": int(time.time()), "nanos": 0},
-            "component": "queue_cog",
-            **kwargs,
-        }
-        logger.log(logging.getLevelName(severity), json.dumps(entry))
+            logger.error(f"Error executing queue command for guild {guild_id}: {str(e)}", exc_info=True)
+            await interaction.followup.send("An error occurred while trying to display the queue.", ephemeral=True)
 
 async def setup(bot):
-    logger.info("Loading queue cog")
     await bot.add_cog(Queue(bot))

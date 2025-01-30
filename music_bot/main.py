@@ -13,9 +13,12 @@ import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
+import requests
 
 from routes import currently_playing
 from routes import queue
+from routes import current_guilds
+from routes import auth
 
 
 # --- Load environment variables ---
@@ -120,6 +123,8 @@ async def health_check():
 
 app.include_router(currently_playing.init_router(bot))
 app.include_router(queue.init_router(bot))
+app.include_router(current_guilds.init_router(bot, os.getenv("DISCORD_BOT_TOKEN")))
+app.include_router(auth.init_router(bot, os.getenv("DISCORD_BOT_TOKEN")))
 
 # --- Event: on_ready ---
 @bot.event
@@ -170,8 +175,16 @@ async def load_cogs():
     except Exception as e:
         logger.error(f"Failed to load cogs: {str(e)}", exc_info=True)
 
+async def get_all_guilds():
+    """Fetch guilds from Discord"""
+    headers = {"Authorization": f"Bot {os.getenv('DISCORD_BOT_TOKEN')}"}
+    response = requests.get("https://discord.com/api/users/@me/guilds", headers=headers)
+    response.raise_for_status()
+    return response.json()
+
 async def start_bot():
-    bot.music_bot = MusicBot(bot, youtube)
+    guilds = await get_all_guilds()
+    bot.music_bot = MusicBot(bot, youtube, guilds)
     await load_cogs()
     await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
 

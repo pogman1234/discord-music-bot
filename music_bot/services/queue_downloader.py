@@ -5,9 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import Optional, List, Dict
 from dataclasses import dataclass
-from .queue_manager import QueueManager
-import logging
-import json
+from services.queue_manager import QueueManager
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
@@ -15,6 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DownloadStatus:
     """Tracks download status for queue items"""
+    guild_id: int
     is_downloading: bool = False
     current_downloads: List[str] = None  # List of video_ids currently downloading
     max_concurrent: int = 2  # Number of songs to preload
@@ -23,22 +22,24 @@ class DownloadStatus:
         self.current_downloads = []
 
 class QueueDownloader:
-    def __init__(self, queue_manager: QueueManager, youtube, music_bot):
-        self.queue_manager = queue_manager
+    def __init__(self, music_bot, youtube, get_queue_manager, guilds):
+        self.music_bot = music_bot
         self.youtube = youtube
+        self.get_queue_manager = get_queue_manager
+        self.guilds = guilds
         
-        # Set up download directory
         cwd = os.getcwd()
         self.download_dir = os.path.abspath(os.path.join(cwd, "music"))
         os.makedirs(self.download_dir, exist_ok=True)
-        
+
         self.thread_pool = ThreadPoolExecutor(max_workers=3)
-        self.status = DownloadStatus()
-        self.download_lock = asyncio.Lock()
-        self._download_task = None
-        self.max_retries = 3
-        
-        # Modified ytdl_opts - removed skip_download flag
+        self.statuses = {}  # guild_id -> DownloadStatus
+        self._download_tasks = {}  # guild_id -> Task
+        self.cache = {"queries": {}, "videos": {}}  # Initialize cache
+        self.max_retries = 3  # Define max_retries attribute
+        self.download_lock = asyncio.Lock()  # Define download_lock attribute
+
+        # Define ytdl_opts attribute
         self.ytdl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': os.path.join(self.download_dir, '%(id)s'),  # Change extension here
@@ -52,96 +53,97 @@ class QueueDownloader:
             'extract_flat': False,
             'no_warnings': True
         }
-        self.cache_file = "song_cache.json"
-        self.cache = self._load_cache()
-
-    def _load_cache(self) -> dict:
-        """Load or create cache file"""
-        try:
-            with open(self.cache_file, 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            cache = {"queries": {}, "videos": {}}
-            self._save_cache(cache)
-            return cache
-            
-    def _save_cache(self, cache: dict):
-        """Save cache to file"""
-        with open(self.cache_file, 'w') as f:
-            json.dump(cache, f, indent=2)
-            
-    def _similarity_score(self, a: str, b: str) -> float:
-        """Calculate string similarity"""
-        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
     async def start(self):
-        """Start the download monitoring process"""
-        if not self._download_task:
-            self._download_task = asyncio.create_task(self._monitor_queue())
-            logger.info("Queue download monitor started")
+        for guild in self.guilds:
+            guild_id = int(guild["id"])
+            self.statuses[guild_id] = DownloadStatus(guild_id=guild_id)
+            self._download_tasks[guild_id] = asyncio.create_task(self._monitor_queue(guild_id))
+            logger.info(f"Started download monitor for guild {guild_id}")
 
     async def stop(self):
-        """Stop the download monitoring process"""
-        if self._download_task:
-            self._download_task.cancel()
+        """Stop all download monitoring processes"""
+        for guild_id, task in self._download_tasks.items():
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                logger.info(f"Stopped download monitor for guild {guild_id}")
+        self._download_tasks.clear()
+        self.statuses.clear()
+
+    async def cleanup_guild(self, guild_id: int):
+        """Cleanup resources for specific guild"""
+        if guild_id in self._download_tasks:
+            self._download_tasks[guild_id].cancel()
             try:
-                await self._download_task
+                await self._download_tasks[guild_id]
             except asyncio.CancelledError:
                 pass
-            self._download_task = None
-            logger.info("Queue download monitor stopped")
+            del self._download_tasks[guild_id]
+            del self.statuses[guild_id]
+            logger.info(f"Cleaned up download monitor for guild {guild_id}")
 
-    async def _monitor_queue(self):
-        """Monitor queue and initiate downloads for upcoming songs"""
+    async def _monitor_queue(self, guild_id: int):
+        queue_manager = self.get_queue_manager(guild_id)
         while True:
             try:
-                await self._process_downloads()  # Remove the is_downloading check
-                await asyncio.sleep(0.5)  # Check more frequently
-            except Exception as e:
-                logger.error(f"Error in queue download monitor: {e}")
+                # Use get_queue_info and handle it as a list
+                queue_info = queue_manager.get_queue_info()
+                for info in queue_info:
+                    # Check if 'is_downloading' key exists
+                    if not info.get('is_downloading', False):
+                        # Correct usage of queue_info attributes
+                        logger.debug(f"Queue info for guild {guild_id}: {info}")
+                await self._process_downloads(queue_manager)  # Ensure downloads are processed
                 await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"Error in queue download monitor: {str(e)}", exc_info=True)
+                await asyncio.sleep(5)
 
-    async def _process_downloads(self):
+    async def _process_downloads(self, queue_manager):
         """Process downloads for upcoming songs in queue"""
-        if self.status.is_downloading:
+        guild_id = queue_manager.guild_id
+        if guild_id not in self.statuses:
+            logger.warning(f"No download status found for guild {guild_id}")
+            return
+            
+        status = self.statuses[guild_id]
+        if status.is_downloading:
             return
 
         # Get next few songs that need downloading
-        upcoming_songs = await self._get_upcoming_songs()
+        upcoming_songs = await self._get_upcoming_songs(queue_manager)
         if not upcoming_songs:
             return
 
-        self.status.is_downloading = True
+        status.is_downloading = True
         try:
             download_tasks = []
             for song in upcoming_songs:
                 # Check if song needs downloading and isn't already being downloaded
                 if (not song.is_downloaded and 
-                    song.video_id not in self.status.current_downloads and
-                    len(download_tasks) < self.status.max_concurrent):
-                        
-                    self.status.current_downloads.append(song.video_id)
-                    # Create a task for the download
-                    task = asyncio.create_task(self._download_song(song))
-                    download_tasks.append(task)
-
-            if download_tasks:
-                # Run downloads concurrently and wait for them to complete
-                await asyncio.gather(*download_tasks)
-
-        except Exception as e:
-            logger.error(f"Error processing downloads: {e}")
+                    song.video_id not in status.current_downloads):
+                    status.current_downloads.append(song.video_id)
+                    download_tasks.append(self._download_song(song))
+            await asyncio.gather(*download_tasks)
         finally:
-            self.status.is_downloading = False
-            self.status.current_downloads.clear()
+            status.is_downloading = False
 
-    async def _get_upcoming_songs(self) -> List:
+    async def _get_upcoming_songs(self, queue_manager) -> List:
         """Get the next few songs from queue that need downloading"""
-        queue_state = self.queue_manager.get_state()
+        guild_id = queue_manager.guild_id
+        if guild_id not in self.statuses:
+            return []
+            
+        queue_state = queue_manager.get_state()
         upcoming = []
         
         # Get songs from queue up to max_concurrent
-        for song in list(queue_state.queue)[:self.status.max_concurrent]:
+        status = self.statuses[guild_id]
+        for song in list(queue_state.queue)[:status.max_concurrent]:
             if not song.is_downloaded:
                 upcoming.append(song)
                 
@@ -164,8 +166,10 @@ class QueueDownloader:
             logger.error(f"Error downloading song {song.title}: {e}")
             return False
         finally:
-            if song.video_id in self.status.current_downloads:
-                self.status.current_downloads.remove(song.video_id)
+            # Remove from all guild download statuses
+            for status in self.statuses.values():
+                if song.video_id in status.current_downloads:
+                    status.current_downloads.remove(song.video_id)
 
     async def download_song(self, song) -> bool:
         """Download a song to the music directory"""
@@ -217,71 +221,25 @@ class QueueDownloader:
         return False
 
     async def search_video(self, query: str) -> Optional[str]:
-        """Tiered search: Cache -> yt-dlp -> YouTube API"""
-        # 1. Check cache with fuzzy matching
-        normalized_query = query.lower().strip()
-        best_match = None
-        best_score = 0
-        
+        """Search for a video on YouTube"""
+        # Check cache first
         for cached_query, data in self.cache["queries"].items():
-            score = self._similarity_score(normalized_query, cached_query)
-            if score > 0.9 and score > best_score:  # 90% similarity threshold
-                best_score = score
-                best_match = data["video_id"]
-                
-        if best_match:
-            logger.info(f"Cache hit for query: {query}")
-            return best_match
+            if SequenceMatcher(None, query, cached_query).ratio() > 0.8:
+                return data["video_id"]
 
-        # 2. Try yt-dlp
-        try:
-            with yt_dlp.YoutubeDL(self.ytdl_opts) as ytdl:
-                def _search():
-                    return ytdl.extract_info(f"ytsearch1:{query}", download=False)
-                
-                info = await asyncio.get_event_loop().run_in_executor(
-                    self.thread_pool, _search
-                )
-                
-                if info and info.get('entries'):
-                    video = info['entries'][0]
-                    # Cache the result
-                    self.cache["queries"][normalized_query] = {
-                        "video_id": video['id'],
-                        "title": video['title'],
-                        "duration": int(video.get('duration', 0)),
-                        "thumbnail": video.get('thumbnail', ''),
-                        "webpage_url": f"https://www.youtube.com/watch?v={video['id']}"
-                    }
-                    self.cache["videos"][video['id']] = self.cache["queries"][normalized_query]
-                    self._save_cache(self.cache)
-                    return video['id']
-                    
-        except Exception as e:
-            logger.error(f"yt-dlp search error: {e}")
+        # Perform search using YouTube API
+        search_response = self.youtube.search().list(
+            q=query,
+            part="id,snippet",
+            maxResults=1
+        ).execute()
 
-        # 3. Fallback to YouTube API
-        try:
-            video_id = await self._youtube_api_search(query)
-            if video_id:
-                # Cache the result if found
-                video_info = await self.get_video_details(video_id)
-                if video_info:
-                    self.cache["queries"][normalized_query] = {
-                        "video_id": video_id,
-                        "title": video_info['snippet']['title'],
-                        "duration": video_info['duration'],
-                        "thumbnail": video_info['snippet']['thumbnails']['default']['url'],
-                        "webpage_url": f"https://www.youtube.com/watch?v={video_id}"
-                    }
-                    self.cache["videos"][video_id] = self.cache["queries"][normalized_query]
-                    self._save_cache(self.cache)
-                return video_id
-                
-        except Exception as e:
-            logger.error(f"YouTube API search error: {e}")
-            
-        return None
+        if not search_response["items"]:
+            return None
+
+        video_id = search_response["items"][0]["id"]["videoId"]
+        self.cache["queries"][query] = {"video_id": video_id}
+        return video_id
 
     async def get_video_details(self, video_id: str) -> Optional[Dict]:
         """Get detailed video information"""
