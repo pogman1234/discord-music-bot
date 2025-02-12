@@ -12,3 +12,4 @@ build/
 .env.development
 docker-compose.dev.yml
 music_bot/ytdl.log
+docker-compose.yml
